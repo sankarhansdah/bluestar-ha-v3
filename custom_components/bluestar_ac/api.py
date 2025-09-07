@@ -79,14 +79,15 @@ class BluestarMQTTClient:
             # Start the loop
             self.mqtt_client.loop_start()
             
-            # Wait for connection
-            timeout = CONNECTION_TIMEOUT
+            # Wait for connection (reduced timeout)
+            timeout = 5.0  # 5 seconds instead of 30
             while not self.is_connected and timeout > 0:
                 await asyncio.sleep(0.1)
                 timeout -= 0.1
                 
             if not self.is_connected:
-                raise BluestarAPIError("MQTT connection timeout")
+                _LOGGER.warning("⚠️ MQTT connection timeout, will use HTTP fallback")
+                # Don't raise error, just log warning and continue
                 
             _LOGGER.info("✅ MQTT Connected to AWS IoT")
             
@@ -256,7 +257,7 @@ class BluestarAPI:
                 f"{self.base_url}/auth/login",
                 json=login_data,
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=CONNECTION_TIMEOUT)
+                timeout=aiohttp.ClientTimeout(total=10)  # Reduced from 30 to 10 seconds
             ) as response:
                 if response.status != 200:
                     raise BluestarAPIError(f"Login failed with status: {response.status}")
@@ -316,7 +317,7 @@ class BluestarAPI:
             async with self._session.get(
                 f"{self.base_url}/things",
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=CONNECTION_TIMEOUT)
+                timeout=aiohttp.ClientTimeout(total=10)  # Reduced from 30 to 10 seconds
             ) as response:
                 if response.status != 200:
                     raise BluestarAPIError(f"Failed to fetch devices: {response.status}")
