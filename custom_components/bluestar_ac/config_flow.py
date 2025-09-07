@@ -70,6 +70,8 @@ class BluestarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             api = BluestarAPI(
                 phone=user_input["phone"],
                 password=user_input["password"],
+                base_url=BLUESTAR_BASE_URL,
+                mqtt_url=BLUESTAR_MQTT_ENDPOINT,
             )
             
             # Test login

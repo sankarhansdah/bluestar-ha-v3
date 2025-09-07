@@ -10,7 +10,7 @@ from homeassistant.const import Platform
 from homeassistant.helpers.typing import ConfigType
 import asyncio
 
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN, PLATFORMS, BLUESTAR_BASE_URL, BLUESTAR_MQTT_ENDPOINT
 from .coordinator import BluestarDataUpdateCoordinator
 from .api import BluestarAPI, BluestarAPIError
 
@@ -35,8 +35,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api = BluestarAPI(
             phone=entry.data.get("phone"),
             password=entry.data.get("password"),
-            base_url=entry.data.get("base_url"),
-            mqtt_url=entry.data.get("mqtt_url"),
+            base_url=BLUESTAR_BASE_URL,
+            mqtt_url=BLUESTAR_MQTT_ENDPOINT,
         )
         
         # Login to API
