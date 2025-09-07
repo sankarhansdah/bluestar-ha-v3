@@ -251,7 +251,10 @@ class BluestarAPI:
             
             headers = DEFAULT_HEADERS.copy()
             
-            _LOGGER.debug("Logging in to Bluestar API")
+            _LOGGER.debug("🔐 Logging in to Bluestar API")
+            _LOGGER.debug("📍 Base URL: %s", self.base_url)
+            _LOGGER.debug("📱 Phone: %s", self.phone)
+            _LOGGER.debug("🔑 Login URL: %s/auth/login", self.base_url)
             
             async with self._session.post(
                 f"{self.base_url}/auth/login",
