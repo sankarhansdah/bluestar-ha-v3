@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bluestar Smart AC Configuration",
+        "description": "Enter your Bluestar account credentials to connect to your AC units.",
+        "data": {
+          "phone": "Phone Number",
+          "password": "Password",
+          "base_url": "API Base URL",
+          "mqtt_url": "MQTT Endpoint"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Bluestar API. Please check your credentials and network connection.",
+      "invalid_auth": "Invalid authentication credentials. Please check your phone number and password.",
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This Bluestar account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bluestar Smart AC Options",
+        "data": {
+          "update_interval": "Update Interval (seconds)"
+        }
+      }
+    }
+  }
+}
