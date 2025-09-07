@@ -21,8 +21,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required("phone"): str,
         vol.Required("password"): str,
-        vol.Optional("base_url", default=BLUESTAR_BASE_URL): str,
-        vol.Optional("mqtt_url", default=BLUESTAR_MQTT_ENDPOINT): str,
     }
 )
 
@@ -72,8 +70,6 @@ class BluestarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             api = BluestarAPI(
                 phone=user_input["phone"],
                 password=user_input["password"],
-                base_url=user_input.get("base_url", BLUESTAR_BASE_URL),
-                mqtt_url=user_input.get("mqtt_url", BLUESTAR_MQTT_ENDPOINT),
             )
             
             # Test login
