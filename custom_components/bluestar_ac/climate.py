@@ -9,7 +9,6 @@ from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
-    FanMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -34,11 +33,11 @@ HVAC_MODE_REVERSE_MAP = {v: k for k, v in HVAC_MODE_MAP.items()}
 
 # Fan Speed mapping
 FAN_SPEED_MAP = {
-    2: FanMode.LOW,        # Low
-    3: FanMode.MEDIUM,     # Medium
-    4: FanMode.HIGH,       # High
-    6: FanMode.TURBO,      # Turbo
-    7: FanMode.AUTO,       # Auto
+    2: "low",        # Low
+    3: "medium",     # Medium
+    4: "high",       # High
+    6: "turbo",      # Turbo
+    7: "auto",       # Auto
 }
 
 FAN_SPEED_REVERSE_MAP = {v: k for k, v in FAN_SPEED_MAP.items()}
@@ -177,7 +176,7 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
     def fan_mode(self) -> str:
         """Return the current fan mode."""
         fan_speed = self.device_data.get("state", {}).get("fan_speed", 2)
-        return FAN_SPEED_MAP.get(fan_speed, FanMode.LOW)
+        return FAN_SPEED_MAP.get(fan_speed, "low")
 
     @property
     def swing_mode(self) -> str:
