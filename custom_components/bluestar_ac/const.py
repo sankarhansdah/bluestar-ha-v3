@@ -62,5 +62,5 @@ DEFAULT_TEMP = 26
 
 # Update Intervals
 UPDATE_INTERVAL = 30  # seconds
-CONNECTION_TIMEOUT = 10  # seconds (reduced from 30)
+CONNECTION_TIMEOUT = 5  # seconds (reduced from 10 to 5)
 MQTT_KEEPALIVE = 60  # seconds

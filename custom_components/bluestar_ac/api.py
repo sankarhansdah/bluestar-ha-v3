@@ -79,11 +79,11 @@ class BluestarMQTTClient:
             # Start the loop
             self.mqtt_client.loop_start()
             
-            # Wait for connection (reduced timeout)
-            timeout = 5.0  # 5 seconds instead of 30
+            # Wait for connection (ultra-fast timeout)
+            timeout = 2.0  # 2 seconds instead of 5
             while not self.is_connected and timeout > 0:
-                await asyncio.sleep(0.1)
-                timeout -= 0.1
+                await asyncio.sleep(0.05)  # Check more frequently
+                timeout -= 0.05
                 
             if not self.is_connected:
                 _LOGGER.warning("⚠️ MQTT connection timeout, will use HTTP fallback")
@@ -257,7 +257,7 @@ class BluestarAPI:
                 f"{self.base_url}/auth/login",
                 json=login_data,
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=10)  # Reduced from 30 to 10 seconds
+                timeout=aiohttp.ClientTimeout(total=5)  # Reduced to 5 seconds for faster response
             ) as response:
                 if response.status != 200:
                     raise BluestarAPIError(f"Login failed with status: {response.status}")
@@ -317,7 +317,7 @@ class BluestarAPI:
             async with self._session.get(
                 f"{self.base_url}/things",
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=10)  # Reduced from 30 to 10 seconds
+                timeout=aiohttp.ClientTimeout(total=5)  # Reduced to 5 seconds for faster response
             ) as response:
                 if response.status != 200:
                     raise BluestarAPIError(f"Failed to fetch devices: {response.status}")
