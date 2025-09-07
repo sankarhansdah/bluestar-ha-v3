@@ -4,8 +4,8 @@ DOMAIN = "bluestar_ac"
 PLATFORMS = ["climate", "switch", "sensor", "button", "select"]
 
 # API Configuration
-BLUESTAR_BASE_URL = "https://api.bluestarindia.com/prod"
-BLUESTAR_MQTT_ENDPOINT = "a1b2c3d4e5f6g7-ats.iot.ap-south-1.amazonaws.com"
+BLUESTAR_BASE_URL = "https://n3on22cp53.execute-api.ap-south-1.amazonaws.com/prod"
+BLUESTAR_MQTT_ENDPOINT = "a1b2c3d4e5f6g7-ats.iot.ap-south-1.amazonaws.com"  # Will be replaced with actual endpoint from login
 
 # Headers
 DEFAULT_HEADERS = {

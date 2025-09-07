@@ -5,6 +5,7 @@ import logging
 import ssl
 import json
 import time
+import base64
 from typing import Dict, Any, Optional, List
 import aiohttp
 import paho.mqtt.client as mqtt
@@ -196,6 +197,44 @@ class BluestarAPI:
         self.session_token = None
         self.mqtt_client = None
         self._session = None
+        self.aws_credentials = None
+    
+    def _extract_aws_credentials(self, login_response: Dict[str, Any]) -> Dict[str, str]:
+        """Extract AWS credentials from login response (like the decompiled app)."""
+        try:
+            mi = login_response.get("mi")  # Base64 encoded credentials
+            if not mi:
+                raise BluestarAPIError("No 'mi' field in login response")
+            
+            # Decode Base64 and split by "::"
+            decoded = base64.b64decode(mi).decode('utf-8')
+            parts = decoded.split('::')
+            
+            if len(parts) != 3:
+                raise BluestarAPIError(f"Invalid credential format. Expected 3 parts, got {len(parts)}")
+            
+            endpoint, access_key, secret_key = parts
+            
+            credentials = {
+                "endpoint": endpoint,
+                "access_key": access_key,
+                "secret_key": secret_key,
+                "session_id": login_response.get("session"),
+                "user_id": login_response.get("user", {}).get("id"),
+                "raw": mi
+            }
+            
+            _LOGGER.debug("✅ AWS credentials extracted successfully")
+            _LOGGER.debug("📍 Endpoint: %s", endpoint)
+            _LOGGER.debug("🔑 Access Key: %s...", access_key[:8])
+            _LOGGER.debug("🔐 Secret Key: %s...", secret_key[:8])
+            _LOGGER.debug("🆔 Session ID: %s", login_response.get("session"))
+            
+            return credentials
+            
+        except Exception as e:
+            _LOGGER.error("❌ Failed to extract AWS credentials: %s", e)
+            raise BluestarAPIError(f"Failed to extract AWS credentials: {e}")
         
     async def async_login(self) -> None:
         """Login to Bluestar API."""
@@ -230,21 +269,28 @@ class BluestarAPI:
                 self.session_token = data["session"]
                 _LOGGER.info("✅ Successfully logged in to Bluestar API")
                 
-                # Initialize MQTT client
-                if "mi" in data and "access_key" in data["mi"]:
+                # Extract AWS credentials from login response
+                try:
+                    self.aws_credentials = self._extract_aws_credentials(data)
+                    
+                    # Initialize MQTT client with extracted credentials
                     self.mqtt_client = BluestarMQTTClient(
-                        endpoint=self.mqtt_url,
-                        access_key=data["mi"]["access_key"],
-                        secret_key=data["mi"]["secret_key"],
+                        endpoint=self.aws_credentials["endpoint"],
+                        access_key=self.aws_credentials["access_key"],
+                        secret_key=self.aws_credentials["secret_key"],
                         session_id=self.session_token
                     )
                     
                     try:
                         await self.mqtt_client.connect()
-                        _LOGGER.info("✅ MQTT client connected")
+                        _LOGGER.info("✅ MQTT client connected to AWS IoT")
                     except Exception as e:
                         _LOGGER.warning("⚠️ MQTT connection failed, will use HTTP fallback: %s", e)
                         self.mqtt_client = None
+                        
+                except Exception as e:
+                    _LOGGER.warning("⚠️ Failed to extract AWS credentials: %s", e)
+                    self.mqtt_client = None
                 
         except Exception as e:
             _LOGGER.error("❌ Login failed: %s", e)
