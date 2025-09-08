@@ -23,7 +23,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Bluestar AC switch platform."""
-    _LOGGER.info("Setting up Bluestar AC switch platform")
+    _LOGGER.info("SW_SETUP: Setting up Bluestar AC switch platform")
     
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities = []

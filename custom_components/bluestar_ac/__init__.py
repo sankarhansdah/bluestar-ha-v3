@@ -60,9 +60,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("B8 stored hass.data for entry")
         
         # Forward to platforms
-        _LOGGER.debug("B9 forward_entry_setups -> %s", PLATFORMS)
+        _LOGGER.info("B9 forward_entry_setups -> %s", PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        _LOGGER.debug("B10 all platforms forwarded")
+        _LOGGER.info("B10 all platforms forwarded")
         
         # Register update listener
         _LOGGER.debug("B11 registering update listener")
