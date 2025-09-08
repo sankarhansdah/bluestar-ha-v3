@@ -54,6 +54,7 @@ class BluestarACSwitch(CoordinatorEntity, SwitchEntity):
         self._device_data = device_data
         self._attr_unique_id = f"{DOMAIN}_{device_id}_switch"
         self._attr_name = device_data.get("name", f"Bluestar AC {device_id[:8]}")
+        _LOGGER.info("SW5: Initialized switch entity %s with name %s", self._attr_unique_id, self._attr_name)
 
     @property
     def device_info(self) -> dict[str, Any]:
@@ -68,7 +69,9 @@ class BluestarACSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def device_data(self) -> dict[str, Any]:
         """Return the device data from the coordinator."""
-        return self.coordinator.data.get(self._device_id, {})
+        data = self.coordinator.data.get(self._device_id, {})
+        _LOGGER.info("SW4: Device data for %s: %s", self._device_id, data)
+        return data
 
     @property
     def is_on(self) -> bool:
