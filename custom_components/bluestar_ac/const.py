@@ -1,7 +1,7 @@
 """Constants for the Bluestar Smart AC integration."""
 
 DOMAIN = "bluestar_ac"
-PLATFORMS = ["climate", "switch", "sensor", "button", "select"]
+PLATFORMS = ["switch", "sensor", "button", "select"]  # Temporarily remove climate
 
 # API Configuration
 BLUESTAR_BASE_URL = "https://n3on22cp53.execute-api.ap-south-1.amazonaws.com/prod"
