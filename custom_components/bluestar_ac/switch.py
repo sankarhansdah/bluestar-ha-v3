@@ -28,12 +28,18 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities = []
     
+    _LOGGER.info("SW1: Coordinator data keys: %s", list(coordinator.data.keys()))
+    _LOGGER.info("SW2: Coordinator data: %s", coordinator.data)
+    
     for device_id, device_data in coordinator.data.items():
+        _LOGGER.info("SW3: Creating switch for device %s with data: %s", device_id, device_data)
         entities.append(BluestarACSwitch(coordinator, device_id, device_data))
     
     if entities:
         async_add_entities(entities)
         _LOGGER.info("Added %d Bluestar AC switch entities", len(entities))
+    else:
+        _LOGGER.warning("No devices found in coordinator data to create switch entities")
 
 
 class BluestarACSwitch(CoordinatorEntity, SwitchEntity):

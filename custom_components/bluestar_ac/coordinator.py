@@ -23,16 +23,19 @@ class BluestarDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update data via library."""
-        _LOGGER.debug("C1 coordinator _async_update_data() start")
+        _LOGGER.info("C1 coordinator _async_update_data() start")
         
         try:
             # Fetch devices from API
+            _LOGGER.info("C2 fetching devices from API...")
             devices = await self.api.async_get_devices()
             
             if devices is None:
+                _LOGGER.error("C3 Received None from API")
                 raise UpdateFailed("Received None from API")
             
-            _LOGGER.debug("C2 coordinator got %d devices", len(devices))
+            _LOGGER.info("C4 coordinator got %d devices", len(devices))
+            _LOGGER.info("C5 raw devices data: %s", devices)
             
             # Process device data
             processed_devices = {}
