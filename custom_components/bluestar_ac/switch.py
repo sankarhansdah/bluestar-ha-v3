@@ -28,8 +28,15 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities = []
     
-    _LOGGER.info("SW1: Coordinator data keys: %s", list(coordinator.data.keys()))
+    data_keys = list(coordinator.data.keys())
+    _LOGGER.info("SW1: Coordinator data keys: %s", data_keys)
     _LOGGER.info("SW2: Coordinator data: %s", coordinator.data)
+    
+    if not coordinator.data:
+        _LOGGER.warning("SW_EMPTY: Coordinator data is empty! No devices to create switches for.")
+        return
+    
+    _LOGGER.info("SW_DATA_OK: Coordinator has %d devices", len(coordinator.data))
     
     for device_id, device_data in coordinator.data.items():
         _LOGGER.info("SW3: Creating switch for device %s with data: %s", device_id, device_data)
