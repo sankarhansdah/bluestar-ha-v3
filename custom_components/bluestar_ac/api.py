@@ -276,10 +276,69 @@ class BluestarAPI:
         headers = DEFAULT_HEADERS.copy()
         headers["X-APP-SESSION"] = self.session_token
 
-        # EXACT WEBAPP METHOD: Send control payload directly to /control endpoint
+        # EXACT WEBAPP METHOD: Get current device state to determine mode
+        async with self._session.get(
+            f"{self.base_url}/things",
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+        ) as response:
+            if not response.ok:
+                raise Exception(f"Failed to fetch device state: {response.status}")
+            
+            device_data = await response.json()
+            current_state = None
+            for device in device_data:
+                if device["id"] == device_id:
+                    current_state = device.get("state", {})
+                    break
+            
+            if not current_state:
+                raise Exception("Device not found")
+
+        # Determine current mode (EXACT from webapp)
+        current_mode = current_state.get("mode", 2)
+        if "mode" in payload:
+            if isinstance(payload["mode"], dict) and "value" in payload["mode"]:
+                current_mode = int(payload["mode"]["value"])
+            else:
+                current_mode = int(payload["mode"])
+
+        # Build mode-specific preferences structure (EXACT WEBAPP STRUCTURE)
+        mode_config = {}
+        
+        # Add control parameters to mode configuration (EXACT from webapp)
+        if "pow" in payload:
+            mode_config["power"] = str(payload["pow"])
+        if "mode" in payload:
+            if isinstance(payload["mode"], dict) and "value" in payload["mode"]:
+                mode_config["mode"] = str(payload["mode"]["value"])
+            else:
+                mode_config["mode"] = str(payload["mode"])
+        if "stemp" in payload:
+            mode_config["stemp"] = str(payload["stemp"])
+        if "fspd" in payload:
+            mode_config["fspd"] = str(payload["fspd"])
+        if "vswing" in payload:
+            mode_config["vswing"] = str(payload["vswing"])
+        if "hswing" in payload:
+            mode_config["hswing"] = str(payload["hswing"])
+        if "display" in payload:
+            mode_config["display"] = str(payload["display"])
+
+        # EXACT NESTED STRUCTURE from webapp
+        preferences_payload = {
+            "preferences": {
+                "mode": {
+                    str(current_mode): mode_config
+                }
+            }
+        }
+
+        _LOGGER.debug("API22: Sending EXACT WEBAPP structure: %s", preferences_payload)
+
         async with self._session.post(
-            f"{self.base_url}/things/{device_id}/control",
-            json=payload,
+            f"{self.base_url}/things/{device_id}/preferences",
+            json=preferences_payload,
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
         ) as response:
