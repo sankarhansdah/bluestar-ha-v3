@@ -184,40 +184,39 @@ class BluestarAPI:
         if not self.session_token:
             raise Exception("Not logged in")
 
-        # Build control payload EXACTLY like webapp (DIRECT STRUCTURE, NO WRAPPER)
-        control_payload = {}
+        # Build preferences payload EXACTLY like webapp
+        preferences = {}
         
         # Map Home Assistant parameters to Bluestar parameters (EXACT WEBAPP STRUCTURE)
         if "hvac_mode" in kwargs:
             mode = kwargs["hvac_mode"]
             if mode == "off":
-                control_payload["pow"] = 0
+                preferences["pow"] = 0
             else:
-                control_payload["pow"] = 1
+                preferences["pow"] = 1
                 # Map HA mode to Bluestar mode
                 from .const import HA_MODES
                 bluestar_mode = HA_MODES.get(mode, 2)
-                control_payload["mode"] = bluestar_mode
+                preferences["mode"] = bluestar_mode
         
         if "target_temperature" in kwargs:
-            control_payload["stemp"] = kwargs["target_temperature"]
+            preferences["stemp"] = kwargs["target_temperature"]
             
         if "fan_mode" in kwargs:
             from .const import HA_FAN_SPEEDS
             fan_speed = HA_FAN_SPEEDS.get(kwargs["fan_mode"], 2)
-            control_payload["fspd"] = fan_speed
+            preferences["fspd"] = fan_speed
             
         if "swing_mode" in kwargs:
             from .const import HA_SWING_MODES
             swing_value = HA_SWING_MODES.get(kwargs["swing_mode"], 0)
-            control_payload["vswing"] = swing_value
+            preferences["vswing"] = swing_value
             
         if "display" in kwargs:
-            control_payload["display"] = 1 if kwargs["display"] else 0
+            preferences["display"] = 1 if kwargs["display"] else 0
 
-        # Add timestamp and source (EXACT WEBAPP FORMAT)
-        control_payload["ts"] = int(asyncio.get_event_loop().time() * 1000)
-        control_payload[SOURCE_KEY] = SOURCE_VALUE
+        # EXACT WEBAPP PAYLOAD STRUCTURE
+        control_payload = {"preferences": preferences}
 
         _LOGGER.debug("API15: Control payload (EXACT WEBAPP): %s", control_payload)
 
@@ -228,7 +227,7 @@ class BluestarAPI:
         if self._mqtt_connected and self.mqtt_client:
             try:
                 _LOGGER.debug("API16: Attempting MQTT control")
-                await self._publish_mqtt_command(device_id, control_payload)
+                await self._publish_mqtt_command(device_id, preferences)
                 success = True
                 _LOGGER.debug("API17: MQTT command sent successfully")
             except Exception as e:
