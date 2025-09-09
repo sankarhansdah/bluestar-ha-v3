@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import ssl
+import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
