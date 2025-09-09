@@ -48,7 +48,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
     """Bluestar Smart AC climate entity."""
 
-    _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.FAN_MODE
@@ -119,7 +119,10 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         current_temp = state.get("ctemp")
         if current_temp:
             try:
-                return float(current_temp)
+                temp_f = float(current_temp)
+                # Convert Fahrenheit to Celsius
+                temp_c = (temp_f - 32) * 5/9
+                return round(temp_c, 1)
             except (ValueError, TypeError):
                 pass
         return None
@@ -131,7 +134,10 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         target_temp = state.get("stemp")
         if target_temp:
             try:
-                return float(target_temp)
+                temp_f = float(target_temp)
+                # Convert Fahrenheit to Celsius
+                temp_c = (temp_f - 32) * 5/9
+                return round(temp_c, 1)
             except (ValueError, TypeError):
                 pass
         return DEFAULT_TEMP
@@ -196,8 +202,10 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         """Set target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is not None:
-            _LOGGER.debug("CL6: Setting temperature to %s", temperature)
-            await self.api.set_state(self.device_id, target_temperature=temperature)
+            # Convert Celsius to Fahrenheit for the API
+            temp_f = (temperature * 9/5) + 32
+            _LOGGER.debug("CL6: Setting temperature to %s°C (%s°F)", temperature, round(temp_f, 1))
+            await self.api.set_state(self.device_id, target_temperature=temp_f)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
