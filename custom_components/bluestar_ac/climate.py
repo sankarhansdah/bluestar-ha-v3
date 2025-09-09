@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from homeassistant.components.climate import ClimateEntity, HVACMode
-from homeassistant.components.climate.const import ClimateEntityFeature, FanMode
+from homeassistant.components.climate.const import ClimateEntityFeature
 from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
