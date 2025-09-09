@@ -219,27 +219,40 @@ class BluestarAPI:
         control_payload["ts"] = int(asyncio.get_event_loop().time() * 1000)
         control_payload[SOURCE_KEY] = SOURCE_VALUE
 
-        # Try MQTT first, then HTTP fallback
+        # EXACT WEBAPP ALGORITHM: MQTT first, then HTTP fallback, then force sync
         success = False
         
-        # Try MQTT
+        # Step 1: Try MQTT first (EXACT WEBAPP METHOD)
         if self._mqtt_connected and self.mqtt_client:
             try:
+                _LOGGER.debug("API15: Attempting MQTT control")
                 await self._publish_mqtt_command(device_id, control_payload)
                 success = True
-                _LOGGER.debug("API15: MQTT command sent successfully")
+                _LOGGER.debug("API16: MQTT command sent successfully")
             except Exception as e:
-                _LOGGER.warning("API16: MQTT command failed: %s", e)
+                _LOGGER.warning("API17: MQTT command failed: %s", e)
 
-        # HTTP fallback
+        # Step 2: HTTP fallback (EXACT WEBAPP METHOD)
         if not success:
             try:
+                _LOGGER.debug("API18: Attempting HTTP control")
                 await self._send_http_command(device_id, control_payload)
                 success = True
-                _LOGGER.debug("API17: HTTP command sent successfully")
+                _LOGGER.debug("API19: HTTP command sent successfully")
             except Exception as e:
-                _LOGGER.error("API18: HTTP command failed: %s", e)
-                raise Exception(f"All control methods failed: {e}")
+                _LOGGER.error("API20: HTTP command failed: %s", e)
+
+        # Step 3: Force sync (EXACT WEBAPP METHOD)
+        if success:
+            try:
+                _LOGGER.debug("API21: Sending force sync")
+                await self._force_sync_device(device_id)
+                _LOGGER.debug("API22: Force sync sent successfully")
+            except Exception as e:
+                _LOGGER.warning("API23: Force sync failed: %s", e)
+
+        if not success:
+            raise Exception("All control methods failed")
 
     async def _publish_mqtt_command(self, device_id: str, payload: Dict[str, Any]) -> None:
         """Publish MQTT command."""
@@ -295,6 +308,36 @@ class BluestarAPI:
             if not response.ok:
                 error_text = await response.text()
                 raise Exception(f"HTTP command failed: {response.status} - {error_text}")
+
+    async def _force_sync_device(self, device_id: str) -> None:
+        """Force sync device state (EXACT WEBAPP METHOD)."""
+        if not self.mqtt_client or not self._mqtt_connected:
+            raise Exception("MQTT not connected")
+
+        # Create force sync payload (EXACT WEBAPP FORMAT)
+        force_sync_payload = {FORCE_FETCH_KEY: 1}
+        
+        # Add source
+        force_sync_payload[SOURCE_KEY] = SOURCE_VALUE
+        
+        # Create MQTT payload structure
+        mqtt_payload = {
+            "state": {
+                "desired": force_sync_payload
+            }
+        }
+
+        topic = MQTT_STATE_UPDATE_TOPIC.format(device_id=device_id)
+        
+        # Publish in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            self.mqtt_client.publish,
+            topic,
+            json.dumps(mqtt_payload),
+            MQTT_QOS
+        )
 
     async def connect_mqtt(self, on_message: Callable) -> None:
         """Connect to MQTT broker."""
