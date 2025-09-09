@@ -275,10 +275,52 @@ class BluestarAPI:
         headers = DEFAULT_HEADERS.copy()
         headers["X-APP-SESSION"] = self.session_token
 
-        # EXACT WEBAPP METHOD: Send control payload directly to /control endpoint
+        # EXACT WEBAPP METHOD: Use nested mode structure
+        preferences = payload.get("preferences", {})
+        
+        # Get current device state to determine mode
+        async with self._session.get(
+            f"{self.base_url}/things",
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+        ) as response:
+            if not response.ok:
+                raise Exception(f"Failed to fetch device state: {response.status}")
+            
+            device_data = await response.json()
+            current_state = None
+            for device in device_data:
+                if device["id"] == device_id:
+                    current_state = device.get("state", {})
+                    break
+            
+            if not current_state:
+                raise Exception("Device not found")
+
+        # Determine current mode
+        current_mode = current_state.get("mode", 2)
+        if "mode" in preferences:
+            current_mode = preferences["mode"]
+
+        # Build mode-specific preferences structure (EXACT WEBAPP STRUCTURE)
+        mode_config = {}
+        for key, value in preferences.items():
+            mode_config[key] = str(value)
+
+        # EXACT NESTED STRUCTURE from webapp
+        preferences_payload = {
+            "preferences": {
+                "mode": {
+                    str(current_mode): mode_config
+                }
+            }
+        }
+
+        _LOGGER.debug("API22: Sending EXACT WEBAPP structure: %s", preferences_payload)
+
         async with self._session.post(
-            f"{self.base_url}/things/{device_id}/control",
-            json=payload,
+            f"{self.base_url}/things/{device_id}/preferences",
+            json=preferences_payload,
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
         ) as response:
