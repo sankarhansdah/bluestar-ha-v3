@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from homeassistant.components.climate import ClimateEntity, HVACMode
 from homeassistant.components.climate.const import ClimateEntityFeature
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -48,7 +48,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
     """Bluestar Smart AC climate entity."""
 
-    _attr_temperature_unit = TEMP_CELSIUS
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.FAN_MODE
