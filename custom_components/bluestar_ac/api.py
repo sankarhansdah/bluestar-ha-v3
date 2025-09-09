@@ -221,34 +221,25 @@ class BluestarAPI:
 
         _LOGGER.debug("API15: Control payload (EXACT WEBAPP): %s", control_payload)
 
-        # EXACT WEBAPP ALGORITHM: MQTT first, then HTTP fallback
+        # EXACT WEBAPP ALGORITHM: HTTP ONLY FOR NOW (skip MQTT to isolate issue)
         success = False
         
-        # Step 1: Try MQTT first (EXACT WEBAPP METHOD)
+        # Step 1: Try MQTT first (EXACT WEBAPP METHOD) - DISABLED FOR DEBUGGING
         _LOGGER.debug("API16: MQTT status - client: %s, connected: %s", 
                      self.mqtt_client is not None, self._mqtt_connected)
         
-        if self._mqtt_connected and self.mqtt_client:
-            try:
-                _LOGGER.debug("API16: Attempting MQTT control with payload: %s", control_payload)
-                await self._publish_mqtt_command(device_id, control_payload)
-                success = True
-                _LOGGER.debug("API17: MQTT command sent successfully")
-            except Exception as e:
-                _LOGGER.warning("API18: MQTT command failed: %s", e)
-        else:
-            _LOGGER.warning("API18: MQTT not available - client: %s, connected: %s", 
-                          self.mqtt_client is not None, self._mqtt_connected)
-
+        # SKIP MQTT FOR NOW TO ISOLATE HTTP ISSUE
+        _LOGGER.warning("API18: SKIPPING MQTT FOR DEBUGGING - going straight to HTTP")
+        
         # Step 2: HTTP fallback (EXACT WEBAPP METHOD)
-        if not success:
-            try:
-                _LOGGER.debug("API19: Attempting HTTP control")
-                await self._send_http_command(device_id, control_payload)
-                success = True
-                _LOGGER.debug("API20: HTTP command sent successfully")
-            except Exception as e:
-                _LOGGER.error("API21: HTTP command failed: %s", e)
+        try:
+            _LOGGER.debug("API19: Attempting HTTP control with payload: %s", control_payload)
+            await self._send_http_command(device_id, control_payload)
+            success = True
+            _LOGGER.debug("API20: HTTP command sent successfully")
+        except Exception as e:
+            _LOGGER.error("API21: HTTP command failed: %s", e)
+            _LOGGER.error("API21: Full error details: %s", traceback.format_exc())
 
         if not success:
             raise Exception("All control methods failed")
@@ -341,6 +332,8 @@ class BluestarAPI:
         }
 
         _LOGGER.debug("API22: Sending EXACT WEBAPP structure: %s", preferences_payload)
+        _LOGGER.debug("API22: URL: %s", f"{self.base_url}/things/{device_id}/preferences")
+        _LOGGER.debug("API22: Headers: %s", headers)
 
         async with self._session.post(
             f"{self.base_url}/things/{device_id}/preferences",
@@ -348,9 +341,14 @@ class BluestarAPI:
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
         ) as response:
+            _LOGGER.debug("API22: Response status: %s", response.status)
             if not response.ok:
                 error_text = await response.text()
+                _LOGGER.error("API22: HTTP error response: %s", error_text)
                 raise Exception(f"HTTP command failed: {response.status} - {error_text}")
+            else:
+                response_text = await response.text()
+                _LOGGER.debug("API22: HTTP success response: %s", response_text)
 
     async def _force_sync_device(self, device_id: str) -> None:
         """Force sync device state (EXACT WEBAPP METHOD)."""
