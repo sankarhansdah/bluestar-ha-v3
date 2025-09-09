@@ -225,14 +225,20 @@ class BluestarAPI:
         success = False
         
         # Step 1: Try MQTT first (EXACT WEBAPP METHOD)
+        _LOGGER.debug("API16: MQTT status - client: %s, connected: %s", 
+                     self.mqtt_client is not None, self._mqtt_connected)
+        
         if self._mqtt_connected and self.mqtt_client:
             try:
-                _LOGGER.debug("API16: Attempting MQTT control")
+                _LOGGER.debug("API16: Attempting MQTT control with payload: %s", control_payload)
                 await self._publish_mqtt_command(device_id, control_payload)
                 success = True
                 _LOGGER.debug("API17: MQTT command sent successfully")
             except Exception as e:
                 _LOGGER.warning("API18: MQTT command failed: %s", e)
+        else:
+            _LOGGER.warning("API18: MQTT not available - client: %s, connected: %s", 
+                          self.mqtt_client is not None, self._mqtt_connected)
 
         # Step 2: HTTP fallback (EXACT WEBAPP METHOD)
         if not success:
