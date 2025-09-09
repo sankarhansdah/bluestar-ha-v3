@@ -55,7 +55,6 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         | ClimateEntityFeature.SWING_MODE
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
-        | ClimateEntityFeature.HVAC_MODE
     )
 
     def __init__(self, coordinator, api, device_id: str, device_data: Dict[str, Any]):
