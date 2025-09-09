@@ -284,13 +284,28 @@ class BluestarAPI:
                 raise Exception(f"Failed to fetch device state: {response.status}")
             
             device_data = await response.json()
+            _LOGGER.debug("API22: Device data response: %s", device_data)
+            _LOGGER.debug("API22: Device data type: %s", type(device_data))
+            
             current_state = None
-            for device in device_data:
-                if device["id"] == device_id:
-                    current_state = device.get("state", {})
-                    break
+            if isinstance(device_data, list):
+                for device in device_data:
+                    if device["id"] == device_id:
+                        current_state = device.get("state", {})
+                        break
+            elif isinstance(device_data, dict):
+                # Handle case where response is a dict with device_id as key
+                if device_id in device_data:
+                    current_state = device_data[device_id].get("state", {})
+                else:
+                    # Try to find device in nested structure
+                    for key, value in device_data.items():
+                        if isinstance(value, dict) and value.get("id") == device_id:
+                            current_state = value.get("state", {})
+                            break
             
             if not current_state:
+                _LOGGER.error("API22: Device not found in response. Device ID: %s, Response: %s", device_id, device_data)
                 raise Exception("Device not found")
 
         # Determine current mode (EXACT from webapp)
