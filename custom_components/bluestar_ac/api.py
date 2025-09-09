@@ -184,39 +184,40 @@ class BluestarAPI:
         if not self.session_token:
             raise Exception("Not logged in")
 
-        # Build preferences payload EXACTLY like webapp
-        preferences = {}
+        # Build control payload EXACTLY like webapp (DIRECT STRUCTURE)
+        control_payload = {}
         
         # Map Home Assistant parameters to Bluestar parameters (EXACT WEBAPP STRUCTURE)
         if "hvac_mode" in kwargs:
             mode = kwargs["hvac_mode"]
             if mode == "off":
-                preferences["pow"] = 0
+                control_payload["pow"] = 0
             else:
-                preferences["pow"] = 1
+                control_payload["pow"] = 1
                 # Map HA mode to Bluestar mode
                 from .const import HA_MODES
                 bluestar_mode = HA_MODES.get(mode, 2)
-                preferences["mode"] = bluestar_mode
+                control_payload["mode"] = {"value": bluestar_mode}
         
         if "target_temperature" in kwargs:
-            preferences["stemp"] = kwargs["target_temperature"]
+            control_payload["stemp"] = kwargs["target_temperature"]
             
         if "fan_mode" in kwargs:
             from .const import HA_FAN_SPEEDS
             fan_speed = HA_FAN_SPEEDS.get(kwargs["fan_mode"], 2)
-            preferences["fspd"] = fan_speed
+            control_payload["fspd"] = fan_speed
             
         if "swing_mode" in kwargs:
             from .const import HA_SWING_MODES
             swing_value = HA_SWING_MODES.get(kwargs["swing_mode"], 0)
-            preferences["vswing"] = swing_value
+            control_payload["vswing"] = swing_value
             
         if "display" in kwargs:
-            preferences["display"] = 1 if kwargs["display"] else 0
+            control_payload["display"] = 1 if kwargs["display"] else 0
 
-        # EXACT WEBAPP PAYLOAD STRUCTURE
-        control_payload = {"preferences": preferences}
+        # Add timestamp and source (EXACT WEBAPP FORMAT)
+        control_payload["ts"] = int(asyncio.get_event_loop().time() * 1000)
+        control_payload[SOURCE_KEY] = SOURCE_VALUE
 
         _LOGGER.debug("API15: Control payload (EXACT WEBAPP): %s", control_payload)
 
@@ -227,7 +228,7 @@ class BluestarAPI:
         if self._mqtt_connected and self.mqtt_client:
             try:
                 _LOGGER.debug("API16: Attempting MQTT control")
-                await self._publish_mqtt_command(device_id, preferences)
+                await self._publish_mqtt_command(device_id, control_payload)
                 success = True
                 _LOGGER.debug("API17: MQTT command sent successfully")
             except Exception as e:
@@ -275,52 +276,10 @@ class BluestarAPI:
         headers = DEFAULT_HEADERS.copy()
         headers["X-APP-SESSION"] = self.session_token
 
-        # EXACT WEBAPP METHOD: Use nested mode structure
-        preferences = payload.get("preferences", {})
-        
-        # Get current device state to determine mode
-        async with self._session.get(
-            f"{self.base_url}/things",
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
-        ) as response:
-            if not response.ok:
-                raise Exception(f"Failed to fetch device state: {response.status}")
-            
-            device_data = await response.json()
-            current_state = None
-            for device in device_data:
-                if device["id"] == device_id:
-                    current_state = device.get("state", {})
-                    break
-            
-            if not current_state:
-                raise Exception("Device not found")
-
-        # Determine current mode
-        current_mode = current_state.get("mode", 2)
-        if "mode" in preferences:
-            current_mode = preferences["mode"]
-
-        # Build mode-specific preferences structure (EXACT WEBAPP STRUCTURE)
-        mode_config = {}
-        for key, value in preferences.items():
-            mode_config[key] = str(value)
-
-        # EXACT NESTED STRUCTURE from webapp
-        preferences_payload = {
-            "preferences": {
-                "mode": {
-                    str(current_mode): mode_config
-                }
-            }
-        }
-
-        _LOGGER.debug("API22: Sending EXACT WEBAPP structure: %s", preferences_payload)
-
+        # EXACT WEBAPP METHOD: Send control payload directly to /control endpoint
         async with self._session.post(
-            f"{self.base_url}/things/{device_id}/preferences",
-            json=preferences_payload,
+            f"{self.base_url}/things/{device_id}/control",
+            json=payload,
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
         ) as response:
