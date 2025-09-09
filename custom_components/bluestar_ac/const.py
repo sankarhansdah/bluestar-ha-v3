@@ -78,10 +78,10 @@ HA_SWING_MODES = {
     "auto": -1
 }
 
-# Temperature Range
-MIN_TEMP = 16
-MAX_TEMP = 30
-DEFAULT_TEMP = 24
+# Temperature Range (Fahrenheit - matching webapp)
+MIN_TEMP = 60
+MAX_TEMP = 86
+DEFAULT_TEMP = 75
 
 # Device Configuration
 DEFAULT_DEVICE_ID = "24587ca091f8"  # From webapp

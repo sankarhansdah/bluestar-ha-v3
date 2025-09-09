@@ -48,13 +48,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
     """Bluestar Smart AC climate entity."""
 
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.FAN_MODE
         | ClimateEntityFeature.SWING_MODE
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
+        | ClimateEntityFeature.HVAC_MODE
     )
 
     def __init__(self, coordinator, api, device_id: str, device_data: Dict[str, Any]):
