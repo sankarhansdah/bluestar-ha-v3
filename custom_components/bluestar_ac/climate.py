@@ -118,10 +118,7 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         current_temp = state.get("ctemp")
         if current_temp:
             try:
-                temp_f = float(current_temp)
-                # Convert Fahrenheit to Celsius
-                temp_c = (temp_f - 32) * 5/9
-                return round(temp_c, 1)
+                return float(current_temp)
             except (ValueError, TypeError):
                 pass
         return None
@@ -133,10 +130,7 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         target_temp = state.get("stemp")
         if target_temp:
             try:
-                temp_f = float(target_temp)
-                # Convert Fahrenheit to Celsius
-                temp_c = (temp_f - 32) * 5/9
-                return round(temp_c, 1)
+                return float(target_temp)
             except (ValueError, TypeError):
                 pass
         return DEFAULT_TEMP
@@ -201,10 +195,8 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         """Set target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is not None:
-            # Convert Celsius to Fahrenheit for the API
-            temp_f = (temperature * 9/5) + 32
-            _LOGGER.debug("CL6: Setting temperature to %s°C (%s°F)", temperature, round(temp_f, 1))
-            await self.api.set_state(self.device_id, target_temperature=temp_f)
+            _LOGGER.debug("CL6: Setting temperature to %s", temperature)
+            await self.api.set_state(self.device_id, target_temperature=temperature)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""

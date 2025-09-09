@@ -178,78 +178,70 @@ class BluestarAPI:
         raise Exception(f"Device {device_id} not found")
 
     async def set_state(self, device_id: str, **kwargs) -> None:
-        """Set device state."""
+        """Set device state using EXACT WEBAPP METHOD."""
         _LOGGER.debug("API14: Setting state for device %s: %s", device_id, kwargs)
         
         if not self.session_token:
             raise Exception("Not logged in")
 
-        # Build control payload
-        control_payload = {}
+        # Build preferences payload EXACTLY like webapp
+        preferences = {}
         
-        # Map Home Assistant parameters to Bluestar parameters
+        # Map Home Assistant parameters to Bluestar parameters (EXACT WEBAPP STRUCTURE)
         if "hvac_mode" in kwargs:
             mode = kwargs["hvac_mode"]
             if mode == "off":
-                control_payload["pow"] = 0
+                preferences["pow"] = 0
             else:
-                control_payload["pow"] = 1
+                preferences["pow"] = 1
                 # Map HA mode to Bluestar mode
                 from .const import HA_MODES
                 bluestar_mode = HA_MODES.get(mode, 2)
-                control_payload["mode"] = {"value": bluestar_mode}
+                preferences["mode"] = bluestar_mode
         
         if "target_temperature" in kwargs:
-            control_payload["stemp"] = str(kwargs["target_temperature"])
+            preferences["stemp"] = kwargs["target_temperature"]
             
         if "fan_mode" in kwargs:
             from .const import HA_FAN_SPEEDS
             fan_speed = HA_FAN_SPEEDS.get(kwargs["fan_mode"], 2)
-            control_payload["fspd"] = fan_speed
+            preferences["fspd"] = fan_speed
             
         if "swing_mode" in kwargs:
             from .const import HA_SWING_MODES
             swing_value = HA_SWING_MODES.get(kwargs["swing_mode"], 0)
-            control_payload["vswing"] = swing_value
+            preferences["vswing"] = swing_value
             
         if "display" in kwargs:
-            control_payload["display"] = 1 if kwargs["display"] else 0
+            preferences["display"] = 1 if kwargs["display"] else 0
 
-        # Add timestamp and source
-        control_payload["ts"] = int(asyncio.get_event_loop().time() * 1000)
-        control_payload[SOURCE_KEY] = SOURCE_VALUE
+        # EXACT WEBAPP PAYLOAD STRUCTURE
+        control_payload = {"preferences": preferences}
 
-        # EXACT WEBAPP ALGORITHM: MQTT first, then HTTP fallback, then force sync
+        _LOGGER.debug("API15: Control payload (EXACT WEBAPP): %s", control_payload)
+
+        # EXACT WEBAPP ALGORITHM: MQTT first, then HTTP fallback
         success = False
         
         # Step 1: Try MQTT first (EXACT WEBAPP METHOD)
         if self._mqtt_connected and self.mqtt_client:
             try:
-                _LOGGER.debug("API15: Attempting MQTT control")
-                await self._publish_mqtt_command(device_id, control_payload)
+                _LOGGER.debug("API16: Attempting MQTT control")
+                await self._publish_mqtt_command(device_id, preferences)
                 success = True
-                _LOGGER.debug("API16: MQTT command sent successfully")
+                _LOGGER.debug("API17: MQTT command sent successfully")
             except Exception as e:
-                _LOGGER.warning("API17: MQTT command failed: %s", e)
+                _LOGGER.warning("API18: MQTT command failed: %s", e)
 
         # Step 2: HTTP fallback (EXACT WEBAPP METHOD)
         if not success:
             try:
-                _LOGGER.debug("API18: Attempting HTTP control")
+                _LOGGER.debug("API19: Attempting HTTP control")
                 await self._send_http_command(device_id, control_payload)
                 success = True
-                _LOGGER.debug("API19: HTTP command sent successfully")
+                _LOGGER.debug("API20: HTTP command sent successfully")
             except Exception as e:
-                _LOGGER.error("API20: HTTP command failed: %s", e)
-
-        # Step 3: Force sync (EXACT WEBAPP METHOD)
-        if success:
-            try:
-                _LOGGER.debug("API21: Sending force sync")
-                await self._force_sync_device(device_id)
-                _LOGGER.debug("API22: Force sync sent successfully")
-            except Exception as e:
-                _LOGGER.warning("API23: Force sync failed: %s", e)
+                _LOGGER.error("API21: HTTP command failed: %s", e)
 
         if not success:
             raise Exception("All control methods failed")
@@ -279,29 +271,14 @@ class BluestarAPI:
         )
 
     async def _send_http_command(self, device_id: str, payload: Dict[str, Any]) -> None:
-        """Send HTTP command."""
+        """Send HTTP command using EXACT WEBAPP METHOD."""
         headers = DEFAULT_HEADERS.copy()
         headers["X-APP-SESSION"] = self.session_token
 
-        # Build preferences payload
-        current_mode = payload.get("mode", {}).get("value", 2)
-        mode_config = {}
-        
-        for key, value in payload.items():
-            if key not in ["ts", SOURCE_KEY]:
-                mode_config[key] = str(value)
-
-        preferences_payload = {
-            "preferences": {
-                "mode": {
-                    str(current_mode): mode_config
-                }
-            }
-        }
-
+        # EXACT WEBAPP METHOD: Send preferences directly to /control endpoint
         async with self._session.post(
-            f"{self.base_url}/things/{device_id}/preferences",
-            json=preferences_payload,
+            f"{self.base_url}/things/{device_id}/control",
+            json=payload,
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
         ) as response:
