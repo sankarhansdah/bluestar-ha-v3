@@ -71,3 +71,5 @@ echo "🚀 Integration should load in ~5-10 seconds"
 echo "🔍 Check logs: ha core logs | grep bluestar"
 echo "📱 Only phone/password fields will be shown in setup"
 echo "🌐 URLs are now properly set from constants"
+
+

@@ -43,3 +43,5 @@ ha core start
 
 echo "✅ Force reinstall complete!"
 echo "🔍 Check Home Assistant logs: ha core logs"
+
+

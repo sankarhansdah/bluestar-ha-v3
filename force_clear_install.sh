@@ -108,3 +108,5 @@ echo "4. Search for 'Bluestar Smart AC'"
 echo "5. Enter your phone and password"
 echo ""
 echo "If you still get import errors, the issue is with Home Assistant's caching system."
+
+

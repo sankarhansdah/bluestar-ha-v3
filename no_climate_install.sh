@@ -112,3 +112,5 @@ echo "4. Search for 'Bluestar Smart AC'"
 echo "5. Enter your phone and password"
 echo ""
 echo "Once this works, we can add climate platform back!"
+
+

@@ -2,14 +2,10 @@
   "domain": "bluestar_ac",
   "name": "Bluestar Smart AC (Unofficial)",
   "version": "3.0.0",
-  "codeowners": ["@sankarhansdah"],
   "iot_class": "cloud_polling",
   "integration_type": "hub",
-  "loggers": ["custom_components.bluestar_ac"],
-  "requirements": ["paho-mqtt>=1.6.1", "aiohttp>=3.8.0"],
-  "after_dependencies": ["http"],
-  "dependencies": [],
+  "codeowners": ["@sankarhansdah"],
+  "requirements": ["aiohttp>=3.8.0", "paho-mqtt>=1.6.1"],
   "config_flow": true,
-  "documentation": "https://github.com/sankarhansdah/bluestar-ha-v3",
-  "issue_tracker": "https://github.com/sankarhansdah/bluestar-ha-v3/issues"
+  "dependencies": []
 }

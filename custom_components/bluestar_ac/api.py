@@ -1,504 +1,395 @@
-"""Bluestar Smart AC API client based on working webapp implementation."""
+"""Bluestar Smart AC API client."""
 
 import asyncio
+import base64
+import json
 import logging
 import ssl
-import json
-import time
-import base64
-from typing import Dict, Any, Optional, List
+from typing import Any, Callable, Dict, List, Optional
+
 import aiohttp
 import paho.mqtt.client as mqtt
+
 from .const import (
     BLUESTAR_BASE_URL,
-    BLUESTAR_MQTT_ENDPOINT,
     DEFAULT_HEADERS,
-    PUB_CONTROL_TOPIC_NAME,
-    PUB_STATE_UPDATE_TOPIC_NAME,
-    SUB_STATE_TOPIC_NAME,
-    SRC_KEY,
-    SRC_VALUE,
-    FORCE_FETCH_KEY_NAME,
-    CONNECTION_TIMEOUT,
-    MQTT_KEEPALIVE
+    DEFAULT_MQTT_TIMEOUT,
+    DEFAULT_TIMEOUT,
+    FORCE_FETCH_KEY,
+    MQTT_CONTROL_TOPIC,
+    MQTT_KEEPALIVE,
+    MQTT_QOS,
+    MQTT_RECONNECT_PERIOD,
+    MQTT_STATE_UPDATE_TOPIC,
+    SOURCE_KEY,
+    SOURCE_VALUE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class BluestarAPIError(Exception):
-    """Exception raised for Bluestar API errors."""
+class BluestarAPI:
+    """Bluestar Smart AC API client."""
 
+    def __init__(
+        self,
+        phone: str,
+        password: str,
+        base_url: str = BLUESTAR_BASE_URL,
+        mqtt_endpoint: Optional[str] = None,
+    ):
+        """Initialize the API client."""
+        self.phone = phone
+        self.password = password
+        self.base_url = base_url
+        self.mqtt_endpoint = mqtt_endpoint
+        self.session_token: Optional[str] = None
+        self.mqtt_client: Optional[mqtt.Client] = None
+        self.mqtt_credentials: Optional[Dict[str, str]] = None
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._mqtt_connected = False
+        self._mqtt_message_callback: Optional[Callable] = None
 
-class BluestarMQTTClient:
-    """MQTT client based on exact webapp implementation."""
-    
-    def __init__(self, endpoint: str, access_key: str, secret_key: str, session_id: str):
-        self.endpoint = endpoint
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.session_id = session_id
-        self.is_connected = False
-        self.mqtt_client = None
-        self._loop = None
+    async def login(self) -> None:
+        """Login and extract credentials."""
+        _LOGGER.debug("API1: Starting login process")
         
-    async def connect(self) -> None:
-        """Connect to AWS IoT MQTT broker."""
+        if not self._session:
+            self._session = aiohttp.ClientSession()
+
         try:
-            self._loop = asyncio.get_running_loop()
-            
-            # Create SSL context in thread-safe manner
-            ssl_context = await self._loop.run_in_executor(None, ssl.create_default_context)
-            
-            client_id = f"bluestar_ha_{int(time.time())}"
-            username = self.access_key
-            password = self.session_id
-            
-            connect_url = f"mqtts://{self.endpoint}:8883"
-            
-            self.mqtt_client = mqtt.Client(client_id=client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
-            self.mqtt_client.username_pw_set(username, password)
-            self.mqtt_client.tls_set_context(ssl_context)
-            
-            # Set callbacks
-            self.mqtt_client.on_connect = self._on_connect
-            self.mqtt_client.on_disconnect = self._on_disconnect
-            self.mqtt_client.on_error = self._on_error
-            
-            _LOGGER.debug("Connecting to MQTT broker: %s", connect_url)
-            
-            # Connect in executor to avoid blocking
-            await self._loop.run_in_executor(
-                None, 
-                self.mqtt_client.connect, 
-                self.endpoint, 
-                8883, 
-                CONNECTION_TIMEOUT
-            )
-            
-            # Start the loop
-            self.mqtt_client.loop_start()
-            
-            # Wait for connection (ultra-fast timeout)
-            timeout = 2.0  # 2 seconds instead of 5
-            while not self.is_connected and timeout > 0:
-                await asyncio.sleep(0.05)  # Check more frequently
-                timeout -= 0.05
-                
-            if not self.is_connected:
-                _LOGGER.warning("⚠️ MQTT connection timeout, will use HTTP fallback")
-                # Don't raise error, just log warning and continue
-                
-            _LOGGER.info("✅ MQTT Connected to AWS IoT")
-            
+            # Prepare login payload
+            login_payload = {
+                "auth_id": self.phone,
+                "auth_type": 1,  # Phone number
+                "password": self.password,
+            }
+
+            headers = DEFAULT_HEADERS.copy()
+            _LOGGER.debug("API2: Sending login request to %s/auth/login", self.base_url)
+
+            async with self._session.post(
+                f"{self.base_url}/auth/login",
+                json=login_payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+            ) as response:
+                if not response.ok:
+                    error_text = await response.text()
+                    _LOGGER.error("API3: Login failed with status %s: %s", response.status, error_text)
+                    raise Exception(f"Login failed: {response.status}")
+
+                login_data = await response.json()
+                _LOGGER.debug("API4: Login successful, extracting credentials")
+
+                # Extract session token
+                self.session_token = login_data.get("session")
+                if not self.session_token:
+                    raise Exception("No session token in login response")
+
+                # Extract AWS credentials from 'mi' field
+                mi_field = login_data.get("mi")
+                if not mi_field:
+                    raise Exception("No 'mi' field in login response")
+
+                # Decode Base64 credentials
+                try:
+                    decoded = base64.b64decode(mi_field).decode("utf-8")
+                    parts = decoded.split("::")
+                    if len(parts) != 3:
+                        raise Exception(f"Invalid credential format. Expected 3 parts, got {len(parts)}")
+                    
+                    endpoint, access_key, secret_key = parts
+                    self.mqtt_credentials = {
+                        "endpoint": endpoint,
+                        "access_key": access_key,
+                        "secret_key": secret_key,
+                        "session_id": self.session_token,
+                    }
+                    
+                    # Update MQTT endpoint if not provided
+                    if not self.mqtt_endpoint:
+                        self.mqtt_endpoint = endpoint
+                        
+                    _LOGGER.debug("API5: Credentials extracted successfully")
+                    _LOGGER.debug("API6: MQTT endpoint: %s", endpoint)
+                    
+                except Exception as e:
+                    _LOGGER.error("API7: Failed to extract credentials: %s", e)
+                    raise Exception(f"Failed to extract credentials: {e}")
+
         except Exception as e:
-            _LOGGER.error("❌ MQTT Connection error: %s", e)
-            raise BluestarAPIError(f"MQTT connection failed: {e}")
-    
-    def _on_connect(self, client, userdata, flags, rc):
-        """MQTT connection callback."""
-        if rc == 0:
-            self.is_connected = True
-            _LOGGER.debug("MQTT connected successfully")
-        else:
-            _LOGGER.error("MQTT connection failed with code: %s", rc)
-    
-    def _on_disconnect(self, client, userdata, rc):
-        """MQTT disconnection callback."""
-        self.is_connected = False
-        _LOGGER.debug("MQTT disconnected: %s", rc)
-    
-    def _on_error(self, client, userdata, error):
-        """MQTT error callback."""
-        _LOGGER.error("MQTT error: %s", error)
-    
-    async def publish(self, device_id: str, control_payload: Dict[str, Any]) -> None:
-        """Publish control command to device."""
-        if not self.is_connected:
-            raise BluestarAPIError("MQTT not connected")
+            _LOGGER.error("API8: Login error: %s", e)
+            raise
+
+    async def get_devices(self) -> List[Dict[str, Any]]:
+        """Get list of devices."""
+        _LOGGER.debug("API9: Fetching devices")
         
+        if not self.session_token:
+            raise Exception("Not logged in")
+
+        headers = DEFAULT_HEADERS.copy()
+        headers["X-APP-SESSION"] = self.session_token
+
         try:
-            # Add SRC_KEY and SRC_VALUE (from decompiled app)
-            payload_with_src = { 
-                **control_payload, 
-                SRC_KEY: SRC_VALUE 
-            }
-            
-            # Wrap in {"state": {"desired": {control_payload}}} (EXACT from decompiled app)
-            shadow_update = {
-                "state": {
-                    "desired": payload_with_src
-                }
-            }
-            
-            topic = PUB_STATE_UPDATE_TOPIC_NAME % device_id
-            
-            _LOGGER.debug("📤 MQTT Publishing to topic: %s", topic)
-            _LOGGER.debug("📤 MQTT Payload: %s", json.dumps(shadow_update, indent=2))
-            
-            # Publish in executor
-            result = await self._loop.run_in_executor(
-                None,
-                self.mqtt_client.publish,
-                topic,
-                json.dumps(shadow_update),
-                0  # qos
-            )
-            
-            if result.rc != mqtt.MQTT_ERR_SUCCESS:
-                raise BluestarAPIError(f"Failed to publish: {result.rc}")
+            async with self._session.get(
+                f"{self.base_url}/things",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+            ) as response:
+                if not response.ok:
+                    error_text = await response.text()
+                    _LOGGER.error("API10: Failed to fetch devices: %s", error_text)
+                    raise Exception(f"Failed to fetch devices: {response.status}")
+
+                data = await response.json()
+                _LOGGER.debug("API11: Devices fetched successfully")
                 
-            _LOGGER.debug("✅ MQTT Published successfully")
-            
+                # Process devices data
+                devices = []
+                if "things" in data and "states" in data:
+                    for thing in data["things"]:
+                        device_id = thing["thing_id"]
+                        state = data["states"].get(device_id, {})
+                        
+                        device = {
+                            "id": device_id,
+                            "name": thing.get("user_config", {}).get("name", "AC"),
+                            "type": "ac",
+                            "state": state.get("state", {}),
+                            "connected": state.get("connected", False),
+                        }
+                        devices.append(device)
+                        
+                _LOGGER.debug("API12: Processed %d devices", len(devices))
+                return devices
+
         except Exception as e:
-            _LOGGER.error("❌ MQTT JSON error during publish: %s", e)
-            raise BluestarAPIError(f"MQTT publish failed: {e}")
-    
-    async def force_sync(self, device_id: str) -> None:
-        """Send force sync command to device."""
-        if not self.is_connected:
-            raise BluestarAPIError("MQTT not connected")
+            _LOGGER.error("API13: Error fetching devices: %s", e)
+            raise
+
+    async def get_device_state(self, device_id: str) -> Dict[str, Any]:
+        """Get specific device state."""
+        devices = await self.get_devices()
+        for device in devices:
+            if device["id"] == device_id:
+                return device["state"]
+        raise Exception(f"Device {device_id} not found")
+
+    async def set_state(self, device_id: str, **kwargs) -> None:
+        """Set device state."""
+        _LOGGER.debug("API14: Setting state for device %s: %s", device_id, kwargs)
         
-        force_sync_payload = { FORCE_FETCH_KEY_NAME: 1 }
-        topic = PUB_CONTROL_TOPIC_NAME % device_id
+        if not self.session_token:
+            raise Exception("Not logged in")
+
+        # Build control payload
+        control_payload = {}
         
-        _LOGGER.debug("📤 MQTT Force Sync to topic: %s", topic)
-        _LOGGER.debug("📤 MQTT Force Sync Payload: %s", json.dumps(force_sync_payload, indent=2))
+        # Map Home Assistant parameters to Bluestar parameters
+        if "hvac_mode" in kwargs:
+            mode = kwargs["hvac_mode"]
+            if mode == "off":
+                control_payload["pow"] = 0
+            else:
+                control_payload["pow"] = 1
+                # Map HA mode to Bluestar mode
+                from .const import HA_MODES
+                bluestar_mode = HA_MODES.get(mode, 2)
+                control_payload["mode"] = {"value": bluestar_mode}
         
-        # Publish in executor
-        result = await self._loop.run_in_executor(
+        if "target_temperature" in kwargs:
+            control_payload["stemp"] = str(kwargs["target_temperature"])
+            
+        if "fan_mode" in kwargs:
+            from .const import HA_FAN_SPEEDS
+            fan_speed = HA_FAN_SPEEDS.get(kwargs["fan_mode"], 2)
+            control_payload["fspd"] = fan_speed
+            
+        if "swing_mode" in kwargs:
+            from .const import HA_SWING_MODES
+            swing_value = HA_SWING_MODES.get(kwargs["swing_mode"], 0)
+            control_payload["vswing"] = swing_value
+            
+        if "display" in kwargs:
+            control_payload["display"] = 1 if kwargs["display"] else 0
+
+        # Add timestamp and source
+        control_payload["ts"] = int(asyncio.get_event_loop().time() * 1000)
+        control_payload[SOURCE_KEY] = SOURCE_VALUE
+
+        # Try MQTT first, then HTTP fallback
+        success = False
+        
+        # Try MQTT
+        if self._mqtt_connected and self.mqtt_client:
+            try:
+                await self._publish_mqtt_command(device_id, control_payload)
+                success = True
+                _LOGGER.debug("API15: MQTT command sent successfully")
+            except Exception as e:
+                _LOGGER.warning("API16: MQTT command failed: %s", e)
+
+        # HTTP fallback
+        if not success:
+            try:
+                await self._send_http_command(device_id, control_payload)
+                success = True
+                _LOGGER.debug("API17: HTTP command sent successfully")
+            except Exception as e:
+                _LOGGER.error("API18: HTTP command failed: %s", e)
+                raise Exception(f"All control methods failed: {e}")
+
+    async def _publish_mqtt_command(self, device_id: str, payload: Dict[str, Any]) -> None:
+        """Publish MQTT command."""
+        if not self.mqtt_client or not self._mqtt_connected:
+            raise Exception("MQTT not connected")
+
+        # Create MQTT payload structure
+        mqtt_payload = {
+            "state": {
+                "desired": payload
+            }
+        }
+
+        topic = MQTT_STATE_UPDATE_TOPIC.format(device_id=device_id)
+        
+        # Publish in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
             None,
             self.mqtt_client.publish,
             topic,
-            json.dumps(force_sync_payload),
-            0  # qos
+            json.dumps(mqtt_payload),
+            MQTT_QOS
         )
+
+    async def _send_http_command(self, device_id: str, payload: Dict[str, Any]) -> None:
+        """Send HTTP command."""
+        headers = DEFAULT_HEADERS.copy()
+        headers["X-APP-SESSION"] = self.session_token
+
+        # Build preferences payload
+        current_mode = payload.get("mode", {}).get("value", 2)
+        mode_config = {}
         
-        if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            raise BluestarAPIError(f"Failed to send force sync: {result.rc}")
+        for key, value in payload.items():
+            if key not in ["ts", SOURCE_KEY]:
+                mode_config[key] = str(value)
+
+        preferences_payload = {
+            "preferences": {
+                "mode": {
+                    str(current_mode): mode_config
+                }
+            }
+        }
+
+        async with self._session.post(
+            f"{self.base_url}/things/{device_id}/preferences",
+            json=preferences_payload,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+        ) as response:
+            if not response.ok:
+                error_text = await response.text()
+                raise Exception(f"HTTP command failed: {response.status} - {error_text}")
+
+    async def connect_mqtt(self, on_message: Callable) -> None:
+        """Connect to MQTT broker."""
+        _LOGGER.debug("API19: Connecting to MQTT")
+        
+        if not self.mqtt_credentials:
+            raise Exception("No MQTT credentials available")
+
+        self._mqtt_message_callback = on_message
+
+        # Create SSL context in executor
+        loop = asyncio.get_event_loop()
+        ssl_context = await loop.run_in_executor(None, ssl.create_default_context)
+
+        # Create MQTT client
+        client_id = f"u-{self.mqtt_credentials['session_id']}"
+        self.mqtt_client = mqtt.Client(client_id=client_id)
+        
+        # Configure AWS IoT authentication
+        self.mqtt_client.tls_set_context(ssl_context)
+        self.mqtt_client.username_pw_set(
+            self.mqtt_credentials["access_key"],
+            self.mqtt_credentials["secret_key"]
+        )
+
+        # Set up event handlers
+        self.mqtt_client.on_connect = self._on_mqtt_connect
+        self.mqtt_client.on_message = self._on_mqtt_message
+        self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
+        self.mqtt_client.on_error = self._on_mqtt_error
+
+        # Connect
+        try:
+            await loop.run_in_executor(
+                None,
+                self.mqtt_client.connect,
+                self.mqtt_endpoint,
+                443,
+                MQTT_KEEPALIVE
+            )
             
-        _LOGGER.debug("✅ MQTT Force sync sent successfully")
-    
-    def disconnect(self) -> None:
+            # Start loop
+            self.mqtt_client.loop_start()
+            
+            # Wait for connection
+            await asyncio.sleep(1)
+            if not self._mqtt_connected:
+                raise Exception("MQTT connection timeout")
+                
+            _LOGGER.debug("API20: MQTT connected successfully")
+            
+        except Exception as e:
+            _LOGGER.error("API21: MQTT connection failed: %s", e)
+            raise
+
+    def _on_mqtt_connect(self, client, userdata, flags, rc):
+        """Handle MQTT connect."""
+        if rc == 0:
+            self._mqtt_connected = True
+            _LOGGER.debug("API22: MQTT connected")
+        else:
+            _LOGGER.error("API23: MQTT connection failed with code %s", rc)
+
+    def _on_mqtt_message(self, client, userdata, msg):
+        """Handle MQTT message."""
+        try:
+            payload = json.loads(msg.payload.decode())
+            _LOGGER.debug("API24: MQTT message received: %s", payload)
+            
+            if self._mqtt_message_callback:
+                self._mqtt_message_callback(payload)
+                
+        except Exception as e:
+            _LOGGER.error("API25: Error processing MQTT message: %s", e)
+
+    def _on_mqtt_disconnect(self, client, userdata, rc):
+        """Handle MQTT disconnect."""
+        self._mqtt_connected = False
+        _LOGGER.debug("API26: MQTT disconnected")
+
+    def _on_mqtt_error(self, client, userdata, error):
+        """Handle MQTT error."""
+        _LOGGER.error("API27: MQTT error: %s", error)
+
+    async def disconnect_mqtt(self) -> None:
         """Disconnect from MQTT broker."""
         if self.mqtt_client:
             self.mqtt_client.loop_stop()
             self.mqtt_client.disconnect()
-            self.is_connected = False
+            self._mqtt_connected = False
+            _LOGGER.debug("API28: MQTT disconnected")
 
-
-class BluestarAPI:
-    """Bluestar Smart AC API client based on working webapp implementation."""
-    
-    def __init__(self, phone: str, password: str, base_url: str = BLUESTAR_BASE_URL, mqtt_url: str = BLUESTAR_MQTT_ENDPOINT):
-        self.phone = phone
-        self.password = password
-        self.base_url = base_url
-        self.mqtt_url = mqtt_url
-        self.session_token = None
-        self.mqtt_client = None
-        self._session = None
-        self.aws_credentials = None
-    
-    def _extract_aws_credentials(self, login_response: Dict[str, Any]) -> Dict[str, str]:
-        """Extract AWS credentials from login response (like the decompiled app)."""
-        try:
-            mi = login_response.get("mi")  # Base64 encoded credentials
-            if not mi:
-                raise BluestarAPIError("No 'mi' field in login response")
-            
-            # Decode Base64 and split by "::"
-            decoded = base64.b64decode(mi).decode('utf-8')
-            parts = decoded.split('::')
-            
-            if len(parts) != 3:
-                raise BluestarAPIError(f"Invalid credential format. Expected 3 parts, got {len(parts)}")
-            
-            endpoint, access_key, secret_key = parts
-            
-            credentials = {
-                "endpoint": endpoint,
-                "access_key": access_key,
-                "secret_key": secret_key,
-                "session_id": login_response.get("session"),
-                "user_id": login_response.get("user", {}).get("id"),
-                "raw": mi
-            }
-            
-            _LOGGER.debug("✅ AWS credentials extracted successfully")
-            _LOGGER.debug("📍 Endpoint: %s", endpoint)
-            _LOGGER.debug("🔑 Access Key: %s...", access_key[:8])
-            _LOGGER.debug("🔐 Secret Key: %s...", secret_key[:8])
-            _LOGGER.debug("🆔 Session ID: %s", login_response.get("session"))
-            
-            return credentials
-            
-        except Exception as e:
-            _LOGGER.error("❌ Failed to extract AWS credentials: %s", e)
-            raise BluestarAPIError(f"Failed to extract AWS credentials: {e}")
-        
-    async def async_login(self) -> None:
-        """Login to Bluestar API."""
-        try:
-            if not self._session:
-                self._session = aiohttp.ClientSession()
-            
-            login_data = {
-                "auth_id": self.phone,
-                "auth_type": 1,
-                "password": self.password
-            }
-            
-            headers = DEFAULT_HEADERS.copy()
-            
-            _LOGGER.debug("🔐 Logging in to Bluestar API")
-            _LOGGER.debug("📍 Base URL: %s", self.base_url)
-            _LOGGER.debug("📱 Phone: %s", self.phone)
-            _LOGGER.debug("🔑 Login URL: %s/auth/login", self.base_url)
-            
-            async with self._session.post(
-                f"{self.base_url}/auth/login",
-                json=login_data,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=5)  # Reduced to 5 seconds for faster response
-            ) as response:
-                if response.status != 200:
-                    raise BluestarAPIError(f"Login failed with status: {response.status}")
-                
-                data = await response.json()
-                
-                if "session" not in data:
-                    raise BluestarAPIError("No session token in login response")
-                
-                self.session_token = data["session"]
-                _LOGGER.info("✅ Successfully logged in to Bluestar API")
-                
-                # Extract AWS credentials from login response
-                try:
-                    self.aws_credentials = self._extract_aws_credentials(data)
-                    
-                    # Initialize MQTT client with extracted credentials
-                    self.mqtt_client = BluestarMQTTClient(
-                        endpoint=self.aws_credentials["endpoint"],
-                        access_key=self.aws_credentials["access_key"],
-                        secret_key=self.aws_credentials["secret_key"],
-                        session_id=self.session_token
-                    )
-                    
-                    try:
-                        await self.mqtt_client.connect()
-                        _LOGGER.info("✅ MQTT client connected to AWS IoT")
-                    except Exception as e:
-                        _LOGGER.warning("⚠️ MQTT connection failed, will use HTTP fallback: %s", e)
-                        self.mqtt_client = None
-                        
-                except Exception as e:
-                    _LOGGER.warning("⚠️ Failed to extract AWS credentials: %s", e)
-                    self.mqtt_client = None
-                
-        except Exception as e:
-            _LOGGER.error("❌ Login failed: %s", e)
-            raise BluestarAPIError(f"Login failed: {e}")
-    
-    def _get_auth_headers(self) -> Dict[str, str]:
-        """Get authenticated headers."""
-        headers = DEFAULT_HEADERS.copy()
-        if self.session_token:
-            headers["X-APP-SESSION"] = self.session_token
-        return headers
-    
-    async def async_get_devices(self) -> List[Dict[str, Any]]:
-        """Get all devices."""
-        try:
-            if not self._session:
-                self._session = aiohttp.ClientSession()
-            
-            headers = self._get_auth_headers()
-            
-            _LOGGER.debug("Fetching devices from Bluestar API")
-            
-            async with self._session.get(
-                f"{self.base_url}/things",
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=5)  # Reduced to 5 seconds for faster response
-            ) as response:
-                if response.status != 200:
-                    raise BluestarAPIError(f"Failed to fetch devices: {response.status}")
-                
-                data = await response.json()
-                
-                if "states" not in data:
-                    return []
-                
-                devices = []
-                for device_id, device_data in data["states"].items():
-                    device_info = {
-                        "id": device_id,
-                        "name": device_data.get("name", f"Bluestar AC {device_id[:8]}"),
-                        "state": device_data.get("state", {}),
-                        "connected": device_data.get("connected", False),
-                        "state_ts": device_data.get("state_ts", 0)
-                    }
-                    devices.append(device_info)
-                
-                _LOGGER.debug("✅ Fetched %d devices", len(devices))
-                return devices
-                
-        except Exception as e:
-            _LOGGER.error("❌ Failed to fetch devices: %s", e)
-            raise BluestarAPIError(f"Failed to fetch devices: {e}")
-    
-    async def async_control_device(self, device_id: str, control_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Control device using multi-step algorithm from webapp."""
-        try:
-            _LOGGER.debug("🎛️ Control request for device: %s", device_id)
-            _LOGGER.debug("Control data: %s", json.dumps(control_data, indent=2))
-            
-            # Add timestamp and source
-            control_payload = {
-                **control_data,
-                "ts": int(time.time() * 1000),
-                "src": "anmq"
-            }
-            
-            control_result = None
-            
-            # Step 1: Try MQTT control (PRIMARY METHOD from webapp)
-            if self.mqtt_client and self.mqtt_client.is_connected:
-                try:
-                    _LOGGER.debug("📤 Step 1: Sending MQTT control")
-                    await self.mqtt_client.publish(device_id, control_payload)
-                    control_result = {"method": "MQTT", "status": "success"}
-                    _LOGGER.debug("✅ MQTT control success")
-                except Exception as e:
-                    _LOGGER.warning("⚠️ MQTT control failed: %s", e)
-            else:
-                _LOGGER.debug("⚠️ MQTT client not available, trying HTTP API fallback")
-            
-            # Step 2: HTTP API fallback with EXACT MODE CONTROL MECHANISM
-            if not control_result:
-                try:
-                    _LOGGER.debug("📤 Step 2: Sending control via HTTP API")
-                    
-                    # Get current device state to determine the mode
-                    devices = await self.async_get_devices()
-                    current_device = next((d for d in devices if d["id"] == device_id), None)
-                    
-                    if not current_device:
-                        raise BluestarAPIError("Device not found")
-                    
-                    # Determine current mode
-                    current_mode = current_device["state"].get("mode", 2)
-                    
-                    # If mode is being changed, use the new mode
-                    if control_payload.get("mode") is not None:
-                        current_mode = int(control_payload["mode"])
-                    
-                    # Build mode-specific preferences structure
-                    mode_config = {}
-                    
-                    # Add control parameters to mode configuration
-                    for key, value in control_payload.items():
-                        if key in ["pow", "mode", "stemp", "fspd", "vswing", "hswing", "display"]:
-                            mode_config[key] = str(value)
-                    
-                    # EXACT NESTED STRUCTURE from webapp
-                    preferences_payload = {
-                        "preferences": {
-                            "mode": {
-                                str(current_mode): mode_config
-                            }
-                        }
-                    }
-                    
-                    _LOGGER.debug("📤 MODE CONTROL STRUCTURE: %s", json.dumps(preferences_payload, indent=2))
-                    
-                    headers = self._get_auth_headers()
-                    
-                    async with self._session.post(
-                        f"{self.base_url}/things/{device_id}/preferences",
-                        json=preferences_payload,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=CONNECTION_TIMEOUT)
-                    ) as response:
-                        if response.status == 200:
-                            control_result = await response.json()
-                            _LOGGER.debug("✅ MODE CONTROL success")
-                        else:
-                            _LOGGER.warning("⚠️ MODE CONTROL failed, trying direct MQTT structure")
-                            
-                            # Fallback to direct MQTT structure
-                            mqtt_style_payload = {
-                                "state": {
-                                    "desired": control_payload
-                                }
-                            }
-                            
-                            async with self._session.post(
-                                f"{self.base_url}/things/{device_id}/state",
-                                json=mqtt_style_payload,
-                                headers=headers,
-                                timeout=aiohttp.ClientTimeout(total=CONNECTION_TIMEOUT)
-                            ) as response:
-                                if response.status == 200:
-                                    control_result = await response.json()
-                                    _LOGGER.debug("✅ Direct MQTT structure success")
-                                else:
-                                    _LOGGER.warning("⚠️ All control methods failed")
-                
-                except Exception as e:
-                    _LOGGER.warning("⚠️ HTTP control failed: %s", e)
-            
-            # Step 3: Force sync if all methods fail
-            if not control_result:
-                try:
-                    _LOGGER.debug("📤 Step 3: Sending force sync")
-                    
-                    if self.mqtt_client and self.mqtt_client.is_connected:
-                        await self.mqtt_client.force_sync(device_id)
-                        _LOGGER.debug("✅ Force sync via MQTT")
-                    else:
-                        force_sync_payload = {"fpsh": 1}
-                        headers = self._get_auth_headers()
-                        
-                        async with self._session.post(
-                            f"{self.base_url}/things/{device_id}/control",
-                            json=force_sync_payload,
-                            headers=headers,
-                            timeout=aiohttp.ClientTimeout(total=CONNECTION_TIMEOUT)
-                        ) as response:
-                            if response.status == 200:
-                                _LOGGER.debug("✅ Force sync via HTTP")
-                            else:
-                                _LOGGER.warning("⚠️ Force sync failed")
-                
-                except Exception as e:
-                    _LOGGER.warning("⚠️ Force sync failed: %s", e)
-            
-            # Get updated device state
-            devices = await self.async_get_devices()
-            updated_device = next((d for d in devices if d["id"] == device_id), None)
-            
-            result = {
-                "message": "Control command sent successfully",
-                "deviceId": device_id,
-                "controlData": control_data,
-                "method": "MULTI_STEP_CONTROL",
-                "api": control_result
-            }
-            
-            if updated_device:
-                result["state"] = updated_device["state"]
-            
-            return result
-            
-        except Exception as e:
-            _LOGGER.error("❌ Control error: %s", e)
-            raise BluestarAPIError(f"Control failed: {e}")
-    
-    async def async_close(self) -> None:
+    async def close(self) -> None:
         """Close the API client."""
-        if self.mqtt_client:
-            self.mqtt_client.disconnect()
+        await self.disconnect_mqtt()
         if self._session:
             await self._session.close()
+        _LOGGER.debug("API29: API client closed")

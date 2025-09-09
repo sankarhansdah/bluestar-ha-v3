@@ -1,19 +1,16 @@
-"""Config flow for Bluestar Smart AC integration."""
-
-from __future__ import annotations
+"""Bluestar Smart AC config flow."""
 
 import logging
-from typing import Any
+from typing import Any, Dict, Optional
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, BLUESTAR_BASE_URL, BLUESTAR_MQTT_ENDPOINT
-from .api import BluestarAPI, BluestarAPIError
+from .api import BluestarAPI
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,10 +28,13 @@ class BluestarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: Optional[Dict[str, Any]] = None
     ) -> FlowResult:
         """Handle the initial step."""
+        _LOGGER.debug("CF1: Starting config flow")
+        
         if user_input is None:
+            _LOGGER.debug("CF2: Showing form")
             return self.async_show_form(
                 step_id="user", data_schema=STEP_USER_DATA_SCHEMA
             )
@@ -42,67 +42,48 @@ class BluestarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         try:
-            await self._test_credentials(user_input)
+            _LOGGER.debug("CF3: Validating credentials")
+            await self._test_credentials(user_input["phone"], user_input["password"])
+            _LOGGER.debug("CF4: Credentials validated successfully")
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except InvalidAuth:
             errors["base"] = "invalid_auth"
         except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected error")
+            _LOGGER.exception("CF5: Unexpected error during config flow")
             errors["base"] = "unknown"
 
         if not errors:
+            _LOGGER.debug("CF6: Creating config entry")
             return self.async_create_entry(
                 title=f"Bluestar AC ({user_input['phone']})", data=user_input
             )
 
+        _LOGGER.debug("CF7: Showing form with errors: %s", errors)
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    async def _test_credentials(self, user_input: dict[str, Any]) -> None:
-        """Test credentials by attempting to login and fetch devices."""
-        _LOGGER.debug("CF1 validate_input() start")
+    async def _test_credentials(self, phone: str, password: str) -> None:
+        """Test credentials by attempting to login."""
+        _LOGGER.debug("CF8: Testing credentials for phone %s", phone)
         
+        api = BluestarAPI(phone, password)
         try:
-            # Create API client
-            _LOGGER.debug("CF2 creating API client")
-            api = BluestarAPI(
-                phone=user_input["phone"],
-                password=user_input["password"],
-                base_url=BLUESTAR_BASE_URL,
-                mqtt_url=BLUESTAR_MQTT_ENDPOINT,
-            )
-            
-            # Test login
-            _LOGGER.debug("CF3 testing login")
-            await api.async_login()
-            
-            # Test device fetch
-            _LOGGER.debug("CF4 testing device fetch")
-            devices = await api.async_get_devices()
-            
-            if not devices:
-                raise InvalidAuth("No devices found")
-            
-            _LOGGER.debug("CF5 validation successful, found %d devices", len(devices))
-            
-            # Close API client
-            await api.async_close()
-            
-        except BluestarAPIError as e:
-            _LOGGER.error("CF6 BluestarAPIError during validation: %s", e)
-            if "login" in str(e).lower() or "auth" in str(e).lower():
+            await api.login()
+            _LOGGER.debug("CF9: Login successful")
+        except Exception as e:
+            _LOGGER.error("CF10: Login failed: %s", e)
+            if "Login failed" in str(e):
                 raise InvalidAuth from e
             else:
                 raise CannotConnect from e
-        except Exception as e:
-            _LOGGER.error("CF7 General error during validation: %s", e)
-            raise CannotConnect from e
+        finally:
+            await api.close()
 
 
 class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
+    """Error to indicate we cannot connect to the host."""
 
 
 class InvalidAuth(HomeAssistantError):

@@ -1,99 +1,77 @@
-"""Switch platform for Bluestar Smart AC integration."""
-
-from __future__ import annotations
+"""Bluestar Smart AC switch platform."""
 
 import logging
-from typing import Any
+from typing import Any, Dict
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import BluestarDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Bluestar AC switch platform."""
-    _LOGGER.info("SW_SETUP: Setting up Bluestar AC switch platform")
+async def async_setup_entry(hass, config_entry, async_add_entities):
+    """Set up Bluestar switch entities."""
+    _LOGGER.debug("SW1: Setting up switch platform")
     
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    api = hass.data[DOMAIN][config_entry.entry_id]["api"]
+    
+    devices = coordinator.get_all_devices()
+    _LOGGER.debug("SW2: Found %d devices for switches", len(devices))
+    
     entities = []
+    for device_id, device_data in devices.items():
+        _LOGGER.debug("SW3: Creating switch entities for device %s", device_id)
+        
+        # Display switch
+        display_entity = BluestarDisplaySwitch(coordinator, api, device_id, device_data)
+        entities.append(display_entity)
     
-    data_keys = list(coordinator.data.keys())
-    _LOGGER.info("SW1: Coordinator data keys: %s", data_keys)
-    _LOGGER.info("SW2: Coordinator data: %s", coordinator.data)
-    
-    if not coordinator.data:
-        _LOGGER.warning("SW_EMPTY: Coordinator data is empty! No devices to create switches for.")
-        return
-    
-    _LOGGER.info("SW_DATA_OK: Coordinator has %d devices", len(coordinator.data))
-    
-    for device_id, device_data in coordinator.data.items():
-        _LOGGER.info("SW3: Creating switch for device %s with data: %s", device_id, device_data)
-        entities.append(BluestarACSwitch(coordinator, device_id, device_data))
-    
-    if entities:
-        async_add_entities(entities)
-        _LOGGER.info("Added %d Bluestar AC switch entities", len(entities))
-    else:
-        _LOGGER.warning("No devices found in coordinator data to create switch entities")
+    _LOGGER.debug("SW4: Adding %d switch entities", len(entities))
+    async_add_entities(entities)
 
 
-class BluestarACSwitch(CoordinatorEntity, SwitchEntity):
-    """Representation of a Bluestar Smart AC switch entity."""
+class BluestarDisplaySwitch(CoordinatorEntity, SwitchEntity):
+    """Bluestar AC display switch."""
 
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: BluestarDataUpdateCoordinator, device_id: str, device_data: dict[str, Any]) -> None:
-        """Initialize the switch entity."""
+    def __init__(self, coordinator, api, device_id: str, device_data: Dict[str, Any]):
+        """Initialize the display switch."""
         super().__init__(coordinator)
-        self._device_id = device_id
-        self._device_data = device_data
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_switch"
-        self._attr_name = device_data.get("name", f"Bluestar AC {device_id[:8]}")
-        _LOGGER.info("SW5: Initialized switch entity %s with name %s", self._attr_unique_id, self._attr_name)
-
-    @property
-    def device_info(self) -> dict[str, Any]:
-        """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._device_id)},
-            "name": self._attr_name,
-            "manufacturer": "Bluestar",
-            "model": "Smart AC",
-        }
-
-    @property
-    def device_data(self) -> dict[str, Any]:
-        """Return the device data from the coordinator."""
-        data = self.coordinator.data.get(self._device_id, {})
-        _LOGGER.info("SW4: Device data for %s: %s", self._device_id, data)
-        return data
+        self.api = api
+        self.device_id = device_id
+        self.device_data = device_data
+        
+        # Set unique ID
+        self._attr_unique_id = f"bluestar_ac_{device_id}_display"
+        
+        # Set name
+        device_name = device_data.get("name", "Bluestar AC")
+        self._attr_name = f"{device_name} Display"
+        
+        # Set device info
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=device_name,
+            manufacturer="Bluestar",
+            model="Smart AC",
+        )
 
     @property
     def is_on(self) -> bool:
-        """Return true if the AC is on."""
-        power_state = self.device_data.get("state", {}).get("pow", 0)
-        return power_state == 1
+        """Return if the display is on."""
+        state = self.coordinator.get_device_state(self.device_id)
+        display = state.get("display", 1)
+        return display != 0
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the AC on."""
-        control_data = {"pow": 1}
-        await self.coordinator.api.async_control_device(self._device_id, control_data)
-        await self.coordinator.async_request_refresh()
+    async def async_turn_on(self) -> None:
+        """Turn the display on."""
+        _LOGGER.debug("SW5: Turning display on for device %s", self.device_id)
+        await self.api.set_state(self.device_id, display=True)
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the AC off."""
-        control_data = {"pow": 0}
-        await self.coordinator.api.async_control_device(self._device_id, control_data)
-        await self.coordinator.async_request_refresh()
+    async def async_turn_off(self) -> None:
+        """Turn the display off."""
+        _LOGGER.debug("SW6: Turning display off for device %s", self.device_id)
+        await self.api.set_state(self.device_id, display=False)

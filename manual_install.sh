@@ -82,3 +82,5 @@ echo "1. Go to Configuration -> Integrations"
 echo "2. Click 'Add Integration'"
 echo "3. Search for 'Bluestar Smart AC'"
 echo "4. Enter your phone and password"
+
+

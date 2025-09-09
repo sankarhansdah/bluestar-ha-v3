@@ -132,3 +132,5 @@ class BluestarClimateEntity(CoordinatorEntity, ClimateEntity):
         control_data = {"pow": 0}
         await self.coordinator.api.async_control_device(self._device_id, control_data)
         await self.coordinator.async_request_refresh()
+
+

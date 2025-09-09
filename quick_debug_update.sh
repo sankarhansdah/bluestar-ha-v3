@@ -50,3 +50,5 @@ echo "- SW2: Full coordinator data"
 echo "- SW3: Switch entity creation"
 echo "- SW4: Device data for each switch"
 echo "- SW5: Switch entity initialization"
+
+

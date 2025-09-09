@@ -214,3 +214,5 @@ logger:
 **Version**: 3.0.0  
 **Last Updated**: September 2025  
 **Compatibility**: Home Assistant 2023.1.0+
+
+

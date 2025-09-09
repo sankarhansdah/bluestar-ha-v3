@@ -51,3 +51,5 @@ echo "- B9: Platform forwarding start"
 echo "- B10: Platform forwarding complete"
 echo "- SW_SETUP: Switch platform setup called"
 echo "- SW1-SW5: Switch platform debug messages"
+
+

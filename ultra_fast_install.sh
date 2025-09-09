@@ -39,3 +39,5 @@ ha core start
 echo "✅ Ultra-fast install complete!"
 echo "🚀 Integration should load in ~5-10 seconds"
 echo "🔍 Check logs: ha core logs | grep bluestar"
+
+

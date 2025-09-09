@@ -1,112 +1,87 @@
-"""The Bluestar Smart AC integration."""
+"""Bluestar Smart AC integration."""
 
-from __future__ import annotations
-
+import asyncio
 import logging
 import traceback
-from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
-from homeassistant.core import HomeAssistant
-from homeassistant.const import Platform
-from homeassistant.helpers.typing import ConfigType
-import asyncio
+from typing import Any
 
-from .const import DOMAIN, PLATFORMS, BLUESTAR_BASE_URL, BLUESTAR_MQTT_ENDPOINT
-from .coordinator import BluestarDataUpdateCoordinator
-from .api import BluestarAPI, BluestarAPIError
+from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+
+from .api import BluestarAPI
+from .const import DOMAIN
+from .coordinator import BluestarCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Bluestar Smart AC component."""
-    _LOGGER.debug("B1 async_setup() called")
-    return True
+PLATFORMS = [
+    Platform.CLIMATE,
+    Platform.SWITCH,
+    Platform.SENSOR,
+    Platform.BUTTON,
+    Platform.SELECT,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Bluestar Smart AC from a config entry."""
-    _LOGGER.debug("B2 async_setup_entry() start for entry_id=%s title=%s", entry.entry_id, entry.title)
+    _LOGGER.debug("B1: Starting setup for entry %s", entry.entry_id)
     
     hass.data.setdefault(DOMAIN, {})
     
     try:
-        # Create API client
-        _LOGGER.debug("B3 creating API client")
+        _LOGGER.debug("B2: Creating API client")
         api = BluestarAPI(
-            phone=entry.data.get("phone"),
-            password=entry.data.get("password"),
-            base_url=BLUESTAR_BASE_URL,
-            mqtt_url=BLUESTAR_MQTT_ENDPOINT,
+            phone=entry.data["phone"],
+            password=entry.data["password"]
         )
         
-        # Login to API
-        _LOGGER.debug("B4 logging in to API")
-        await api.async_login()
+        _LOGGER.debug("B3: Logging in")
+        await api.login()
         
-        # Create coordinator
-        _LOGGER.debug("B5 creating coordinator")
-        coordinator = BluestarDataUpdateCoordinator(hass, api)
+        _LOGGER.debug("B4: Creating coordinator")
+        coordinator = BluestarCoordinator(hass, api)
         
-        # First refresh
-        _LOGGER.debug("B6 first refresh start")
+        _LOGGER.debug("B5: Performing first refresh")
         await coordinator.async_config_entry_first_refresh()
-        _LOGGER.debug("B7 first refresh OK")
         
-        # Store in hass.data
+        _LOGGER.debug("B6: Storing in hass.data")
         hass.data[DOMAIN][entry.entry_id] = {
             "api": api,
             "coordinator": coordinator,
         }
-        _LOGGER.debug("B8 stored hass.data for entry")
         
-        # Forward to platforms
-        _LOGGER.info("B9 forward_entry_setups -> %s", PLATFORMS)
+        _LOGGER.debug("B7: Setting up MQTT")
+        try:
+            await api.connect_mqtt(coordinator._async_set_updated_data)
+            _LOGGER.debug("B8: MQTT connected successfully")
+        except Exception as e:
+            _LOGGER.warning("B9: MQTT connection failed, continuing with HTTP only: %s", e)
+        
+        _LOGGER.debug("B10: Forwarding platform setups")
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        _LOGGER.info("B10 all platforms forwarded")
         
-        # Register update listener
-        _LOGGER.debug("B11 registering update listener")
-        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-        _LOGGER.debug("B12 async_setup_entry() done")
-        
+        _LOGGER.debug("B11: Setup completed successfully")
         return True
         
     except asyncio.TimeoutError as e:
-        _LOGGER.exception("TMO: Timeout during setup at breadcrumb above. %s", e)
-        raise ConfigEntryNotReady from e
-    except BluestarAPIError as e:
-        _LOGGER.error("API: Bluestar API error during setup: %s", e)
+        _LOGGER.exception("B12: Timeout during setup")
         raise ConfigEntryNotReady from e
     except Exception as e:
-        _LOGGER.error(
-            "FATAL in async_setup_entry at breadcrumb above: %s\n%s",
-            e, traceback.format_exc()
-        )
-        raise ConfigEntryNotReady from e
-
-
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update."""
-    _LOGGER.debug("U1 _async_update_listener() called -> reloading entry")
-    await hass.config_entries.async_reload(entry.entry_id)
+        _LOGGER.error("B13: Fatal error during setup: %s", traceback.format_exc())
+        raise
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.debug("X1 async_unload_entry() start")
+    _LOGGER.debug("Unloading entry %s", entry.entry_id)
     
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:
-        _LOGGER.debug("X2 platforms unloaded; cleaning hass.data")
-        
-        # Close API client
-        if entry.entry_id in hass.data[DOMAIN]:
-            api = hass.data[DOMAIN][entry.entry_id].get("api")
-            if api:
-                await api.async_close()
-        
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-        _LOGGER.debug("X3 async_unload_entry() done -> %s", unload_ok)
+        api = hass.data[DOMAIN][entry.entry_id]["api"]
+        await api.close()
+        hass.data[DOMAIN].pop(entry.entry_id)
     
     return unload_ok

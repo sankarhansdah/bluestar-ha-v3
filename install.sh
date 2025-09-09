@@ -1,65 +1,188 @@
 #!/bin/bash
 
-# Bluestar Smart AC Home Assistant Integration Installation Script
+# Bluestar Smart AC Home Assistant Integration - Installation Script
 # Version 3.0.0
 
 set -e
 
-echo "🏠 Bluestar Smart AC Home Assistant Integration v3.0"
-echo "=================================================="
+echo "🚀 Installing Bluestar Smart AC Integration v3.0.0..."
 
-# Check if we're in the right directory
-if [ ! -d "custom_components/bluestar_ac" ]; then
-    echo "❌ Error: Please run this script from the bluestar-ha-v3 directory"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if running in Home Assistant
+if [ ! -d "/config" ]; then
+    print_error "This script must be run in Home Assistant Terminal"
     exit 1
 fi
-
-# Check if Home Assistant is installed
-HA_CONFIG_DIR=""
-if [ -d "/config" ]; then
-    HA_CONFIG_DIR="/config"
-elif [ -d "$HOME/.homeassistant" ]; then
-    HA_CONFIG_DIR="$HOME/.homeassistant"
-elif [ -d "/usr/share/hassio/homeassistant" ]; then
-    HA_CONFIG_DIR="/usr/share/hassio/homeassistant"
-else
-    echo "❌ Error: Home Assistant configuration directory not found"
-    echo "Please specify the path to your Home Assistant configuration directory:"
-    read -p "HA Config Directory: " HA_CONFIG_DIR
-fi
-
-if [ ! -d "$HA_CONFIG_DIR" ]; then
-    echo "❌ Error: Directory $HA_CONFIG_DIR does not exist"
-    exit 1
-fi
-
-echo "📁 Home Assistant Config Directory: $HA_CONFIG_DIR"
 
 # Create custom_components directory if it doesn't exist
-CUSTOM_COMPONENTS_DIR="$HA_CONFIG_DIR/custom_components"
-if [ ! -d "$CUSTOM_COMPONENTS_DIR" ]; then
-    echo "📂 Creating custom_components directory"
-    mkdir -p "$CUSTOM_COMPONENTS_DIR"
+if [ ! -d "/config/custom_components" ]; then
+    print_status "Creating custom_components directory..."
+    mkdir -p /config/custom_components
 fi
 
-# Copy the integration files
-echo "📋 Copying integration files..."
-cp -r custom_components/bluestar_ac "$CUSTOM_COMPONENTS_DIR/"
+# Create bluestar_ac directory
+BLUESTAR_DIR="/config/custom_components/bluestar_ac"
+if [ -d "$BLUESTAR_DIR" ]; then
+    print_warning "Removing existing integration..."
+    rm -rf "$BLUESTAR_DIR"
+fi
+
+print_status "Creating bluestar_ac directory..."
+mkdir -p "$BLUESTAR_DIR"
+
+# Download integration files
+print_status "Downloading integration files..."
+
+# Core files
+wget -q -O "$BLUESTAR_DIR/__init__.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/__init__.py"
+wget -q -O "$BLUESTAR_DIR/api.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/api.py"
+wget -q -O "$BLUESTAR_DIR/coordinator.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/coordinator.py"
+wget -q -O "$BLUESTAR_DIR/config_flow.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/config_flow.py"
+wget -q -O "$BLUESTAR_DIR/const.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/const.py"
+wget -q -O "$BLUESTAR_DIR/manifest.json" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/manifest.json"
+wget -q -O "$BLUESTAR_DIR/strings.json" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/strings.json"
+
+# Platform files
+wget -q -O "$BLUESTAR_DIR/climate.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/climate.py"
+wget -q -O "$BLUESTAR_DIR/switch.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/switch.py"
+wget -q -O "$BLUESTAR_DIR/sensor.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/sensor.py"
+wget -q -O "$BLUESTAR_DIR/select.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/select.py"
+wget -q -O "$BLUESTAR_DIR/button.py" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/button.py"
+
+# Translations
+mkdir -p "$BLUESTAR_DIR/translations"
+wget -q -O "$BLUESTAR_DIR/translations/en.json" "https://raw.githubusercontent.com/sankarhansdah/bluestar-ha-v3/main/custom_components/bluestar_ac/translations/en.json"
+
+# Verify installation
+print_status "Verifying installation..."
+
+# Check if all files exist
+REQUIRED_FILES=(
+    "__init__.py"
+    "api.py"
+    "coordinator.py"
+    "config_flow.py"
+    "const.py"
+    "manifest.json"
+    "strings.json"
+    "climate.py"
+    "switch.py"
+    "sensor.py"
+    "select.py"
+    "button.py"
+    "translations/en.json"
+)
+
+for file in "${REQUIRED_FILES[@]}"; do
+    if [ ! -f "$BLUESTAR_DIR/$file" ]; then
+        print_error "Missing file: $file"
+        exit 1
+    fi
+done
+
+print_success "All files downloaded successfully!"
 
 # Set proper permissions
-echo "🔐 Setting proper permissions..."
-chmod -R 755 "$CUSTOM_COMPONENTS_DIR/bluestar_ac"
+print_status "Setting file permissions..."
+chmod -R 755 "$BLUESTAR_DIR"
 
-echo "✅ Installation completed successfully!"
+# Check Python syntax
+print_status "Checking Python syntax..."
+python3 -m py_compile "$BLUESTAR_DIR/__init__.py" 2>/dev/null || {
+    print_error "Syntax error in __init__.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/api.py" 2>/dev/null || {
+    print_error "Syntax error in api.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/coordinator.py" 2>/dev/null || {
+    print_error "Syntax error in coordinator.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/config_flow.py" 2>/dev/null || {
+    print_error "Syntax error in config_flow.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/const.py" 2>/dev/null || {
+    print_error "Syntax error in const.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/climate.py" 2>/dev/null || {
+    print_error "Syntax error in climate.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/switch.py" 2>/dev/null || {
+    print_error "Syntax error in switch.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/sensor.py" 2>/dev/null || {
+    print_error "Syntax error in sensor.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/select.py" 2>/dev/null || {
+    print_error "Syntax error in select.py"
+    exit 1
+}
+
+python3 -m py_compile "$BLUESTAR_DIR/button.py" 2>/dev/null || {
+    print_error "Syntax error in button.py"
+    exit 1
+}
+
+print_success "Python syntax check passed!"
+
+# Installation complete
+print_success "🎉 Bluestar Smart AC Integration v3.0.0 installed successfully!"
 echo ""
-echo "🚀 Next Steps:"
+print_status "📋 Next Steps:"
 echo "1. Restart Home Assistant"
 echo "2. Go to Settings → Devices & Services"
 echo "3. Click 'Add Integration'"
 echo "4. Search for 'Bluestar Smart AC'"
-echo "5. Enter your credentials and complete the setup"
+echo "5. Enter your phone number and password"
 echo ""
-echo "📖 For detailed instructions, see the README.md file"
-echo "🐛 For troubleshooting, check the Home Assistant logs"
+print_status "📖 Documentation:"
+echo "- README: https://github.com/sankarhansdah/bluestar-ha-v3"
+echo "- Test Plan: See MANUAL_TEST_PLAN.md"
+echo "- Troubleshooting: Check README troubleshooting section"
 echo ""
-echo "🎉 Enjoy controlling your Bluestar AC units with Home Assistant!"
+print_status "🔧 Enable Debug Logging (optional):"
+echo "Add to configuration.yaml:"
+echo "logger:"
+echo "  default: warning"
+echo "  logs:"
+echo "    custom_components.bluestar_ac: debug"
+echo ""
+print_success "Installation complete! 🏠❄️"

@@ -1,15 +1,18 @@
-"""Data update coordinator for Bluestar Smart AC integration."""
+"""Bluestar Smart AC coordinator."""
 
 import logging
 from datetime import timedelta
+from typing import Any, Dict
+
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from .api import BluestarAPI, BluestarAPIError
+
+from .api import BluestarAPI
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class BluestarDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the Bluestar API."""
+class BluestarCoordinator(DataUpdateCoordinator):
+    """Bluestar Smart AC data coordinator."""
 
     def __init__(self, hass, api: BluestarAPI):
         """Initialize the coordinator."""
@@ -21,63 +24,45 @@ class BluestarDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self.api = api
 
-    async def _async_update_data(self):
-        """Update data via library."""
-        _LOGGER.info("C1 coordinator _async_update_data() start")
+    async def _async_update_data(self) -> Dict[str, Any]:
+        """Fetch data from API."""
+        _LOGGER.debug("C1: Starting data update")
         
         try:
-            # Fetch devices from API
-            _LOGGER.info("C2 fetching devices from API...")
-            devices = await self.api.async_get_devices()
-            
-            if devices is None:
-                _LOGGER.error("C3 Received None from API")
-                raise UpdateFailed("Received None from API")
-            
-            _LOGGER.info("C4 coordinator got %d devices", len(devices))
-            _LOGGER.info("C5 raw devices data: %s", devices)
-            
-            # Process device data
-            processed_devices = {}
+            devices = await self.api.get_devices()
+            if not devices:
+                _LOGGER.warning("C2: No devices returned from API")
+                return {}
+                
+            # Convert devices list to dict keyed by device ID
+            data = {}
             for device in devices:
                 device_id = device["id"]
-                device_state = device["state"]
+                data[device_id] = device
                 
-                # Convert state to Home Assistant format
-                processed_state = {
-                    "power": device_state.get("pow", 0) == 1,
-                    "mode": device_state.get("mode", 2),
-                    "temperature": device_state.get("stemp", "26.0"),
-                    "current_temp": device_state.get("ctemp", "25.0"),
-                    "fan_speed": device_state.get("fspd", 2),
-                    "vertical_swing": device_state.get("vswing", 0),
-                    "horizontal_swing": device_state.get("hswing", 0),
-                    "display": device_state.get("display", 1),
-                    "connected": device.get("connected", False),
-                    "timestamp": device.get("state_ts", 0),
-                    "rssi": device_state.get("rssi", 0),
-                    "error": device_state.get("err", 0),
-                    "source": device_state.get("src", "api")
-                }
-                
-                processed_devices[device_id] = {
-                    "id": device_id,
-                    "name": device["name"],
-                    "state": processed_state,
-                    "connected": device.get("connected", False),
-                    "timestamp": device.get("state_ts", 0)
-                }
+            _LOGGER.debug("C3: Data update successful, %d devices", len(data))
+            _LOGGER.debug("C4: First 300 chars of data: %s", str(data)[:300])
             
-            _LOGGER.debug("C3 coordinator processed %d devices", len(processed_devices))
+            return data
             
-            return {
-                "devices": processed_devices,
-                "last_update": self.api.session_token
-            }
-            
-        except BluestarAPIError as err:
-            _LOGGER.exception("C4 coordinator BluestarAPIError: %s", err)
-            raise UpdateFailed(f"Bluestar API error: {err}")
-        except Exception as err:
-            _LOGGER.exception("C5 coordinator general error: %s", err)
-            raise UpdateFailed(f"Unexpected error: {err}")
+        except Exception as e:
+            _LOGGER.exception("C5: Data update failed: %s", e)
+            raise UpdateFailed(f"Failed to update data: {e}") from e
+
+    def get_device(self, device_id: str) -> Dict[str, Any]:
+        """Get specific device data."""
+        return self.data.get(device_id, {})
+
+    def get_all_devices(self) -> Dict[str, Any]:
+        """Get all devices data."""
+        return self.data or {}
+
+    def get_device_state(self, device_id: str) -> Dict[str, Any]:
+        """Get device state."""
+        device = self.get_device(device_id)
+        return device.get("state", {})
+
+    def is_device_connected(self, device_id: str) -> bool:
+        """Check if device is connected."""
+        device = self.get_device(device_id)
+        return device.get("connected", False)

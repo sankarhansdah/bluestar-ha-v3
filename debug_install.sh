@@ -104,3 +104,5 @@ echo "3. Click 'Add Integration'"
 echo "4. Search for 'Bluestar Smart AC'"
 echo "5. Enter your phone and password"
 echo "6. Check logs to see what data is being fetched"
+
+

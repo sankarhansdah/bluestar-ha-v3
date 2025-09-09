@@ -50,3 +50,5 @@ echo "- SW2: Full coordinator data"
 echo "- SW_DATA_OK: Number of devices found"
 echo "- SW_EMPTY: If coordinator data is empty"
 echo "- SW3-SW5: Switch entity creation process"
+
+
