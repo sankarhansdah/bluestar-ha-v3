@@ -290,7 +290,7 @@ class BluestarAPI:
             current_state = None
             if isinstance(device_data, list):
                 for device in device_data:
-                    if device["id"] == device_id:
+                    if device.get("id") == device_id or device.get("thing_id") == device_id:
                         current_state = device.get("state", {})
                         break
             elif isinstance(device_data, dict):
@@ -298,11 +298,18 @@ class BluestarAPI:
                 if device_id in device_data:
                     current_state = device_data[device_id].get("state", {})
                 else:
-                    # Try to find device in nested structure
-                    for key, value in device_data.items():
-                        if isinstance(value, dict) and value.get("id") == device_id:
-                            current_state = value.get("state", {})
-                            break
+                    # Try to find device in nested structure (things array)
+                    if "things" in device_data and isinstance(device_data["things"], list):
+                        for device in device_data["things"]:
+                            if device.get("id") == device_id or device.get("thing_id") == device_id:
+                                current_state = device.get("state", {})
+                                break
+                    else:
+                        # Try to find device in other nested structures
+                        for key, value in device_data.items():
+                            if isinstance(value, dict) and (value.get("id") == device_id or value.get("thing_id") == device_id):
+                                current_state = value.get("state", {})
+                                break
             
             if not current_state:
                 _LOGGER.error("API22: Device not found in response. Device ID: %s, Response: %s", device_id, device_data)
