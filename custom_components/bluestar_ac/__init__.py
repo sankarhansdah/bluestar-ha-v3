@@ -54,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         _LOGGER.debug("B7: Setting up MQTT")
         try:
-            await api.connect_mqtt(coordinator._async_set_updated_data)
+            await api.connect_mqtt(coordinator._async_update_data)
             _LOGGER.debug("B8: MQTT connected successfully")
         except Exception as e:
             _LOGGER.warning("B9: MQTT connection failed, continuing with HTTP only: %s", e)
