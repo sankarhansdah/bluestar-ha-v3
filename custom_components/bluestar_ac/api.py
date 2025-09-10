@@ -289,17 +289,40 @@ class BluestarAPI:
             _LOGGER.debug("API22: Device data type: %s", type(device_data))
             
             # EXACT WEBAPP METHOD: deviceData.states[deviceId]
-            if not isinstance(device_data, dict) or "states" not in device_data:
-                _LOGGER.error("API22: Invalid device data structure. Expected 'states' key")
+            if not isinstance(device_data, dict):
+                _LOGGER.error("API22: Invalid device data structure. Expected dict")
                 raise Exception("Invalid device data structure")
             
-            current_state = device_data["states"].get(device_id)
-            if not current_state:
-                _LOGGER.error("API22: Device not found in states. Device ID: %s, Available states: %s", 
-                             device_id, list(device_data["states"].keys()))
-                raise Exception("Device not found")
-            
-            _LOGGER.debug("API22: Found device state: %s", current_state)
+            # Check if we have states key (EXACT webapp method)
+            if "states" in device_data:
+                current_state = device_data["states"].get(device_id)
+                if not current_state:
+                    _LOGGER.error("API22: Device not found in states. Device ID: %s, Available states: %s", 
+                                 device_id, list(device_data["states"].keys()))
+                    raise Exception("Device not found")
+                _LOGGER.debug("API22: Found device state in states: %s", current_state)
+            else:
+                # Fallback to things array if states not available
+                if "things" not in device_data:
+                    _LOGGER.error("API22: No 'states' or 'things' key in response")
+                    raise Exception("Invalid device data structure")
+                
+                things_list = device_data["things"]
+                if not isinstance(things_list, list):
+                    _LOGGER.error("API22: 'things' is not a list: %s", type(things_list))
+                    raise Exception("Invalid things structure")
+                
+                current_state = None
+                for device in things_list:
+                    if device.get("thing_id") == device_id:
+                        current_state = device
+                        break
+                
+                if not current_state:
+                    _LOGGER.error("API22: Device not found in things. Device ID: %s", device_id)
+                    raise Exception("Device not found")
+                
+                _LOGGER.debug("API22: Found device state in things: %s", current_state)
 
         # Determine current mode (EXACT from webapp line 275)
         current_mode = current_state.get("state", {}).get("mode", 2)
@@ -311,7 +334,7 @@ class BluestarAPI:
             else:
                 current_mode = int(payload["mode"])
 
-        # Build mode-specific preferences structure (EXACT WEBAPP STRUCTURE)
+        # Build mode-specific preferences structure (EXACT WEBAPP STRUCTURE lines 287-316)
         mode_config = {}
         
         # Add control parameters to mode configuration (EXACT from webapp)
@@ -332,6 +355,8 @@ class BluestarAPI:
             mode_config["hswing"] = str(payload["hswing"])
         if "display" in payload:
             mode_config["display"] = str(payload["display"])
+        
+        _LOGGER.debug("API22: Mode config (EXACT WEBAPP): %s", mode_config)
 
         # EXACT NESTED STRUCTURE from webapp
         preferences_payload = {
