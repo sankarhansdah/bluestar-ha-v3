@@ -288,44 +288,23 @@ class BluestarAPI:
             _LOGGER.debug("API22: Device data response: %s", device_data)
             _LOGGER.debug("API22: Device data type: %s", type(device_data))
             
-            current_state = None
+            # EXACT WEBAPP METHOD: deviceData.states[deviceId]
+            if not isinstance(device_data, dict) or "states" not in device_data:
+                _LOGGER.error("API22: Invalid device data structure. Expected 'states' key")
+                raise Exception("Invalid device data structure")
             
-            # Handle the actual API response structure: {'things': [{'thing_id': '...', ...}]}
-            if isinstance(device_data, dict) and "things" in device_data:
-                things_list = device_data["things"]
-                if isinstance(things_list, list):
-                    for device in things_list:
-                        if device.get("thing_id") == device_id:
-                            # The device object contains the state directly, not nested under 'state'
-                            current_state = device
-                            _LOGGER.debug("API22: Found device with thing_id: %s", device_id)
-                            _LOGGER.debug("API22: Device object: %s", device)
-                            break
-                else:
-                    _LOGGER.error("API22: 'things' is not a list: %s", type(things_list))
-            elif isinstance(device_data, list):
-                # Handle case where response is directly a list
-                for device in device_data:
-                    if device.get("id") == device_id or device.get("thing_id") == device_id:
-                        current_state = device.get("state", {})
-                        break
-            elif isinstance(device_data, dict):
-                # Handle case where response is a dict with device_id as key
-                if device_id in device_data:
-                    current_state = device_data[device_id].get("state", {})
-                else:
-                    # Try to find device in other nested structures
-                    for key, value in device_data.items():
-                        if isinstance(value, dict) and (value.get("id") == device_id or value.get("thing_id") == device_id):
-                            current_state = value.get("state", {})
-                            break
-            
+            current_state = device_data["states"].get(device_id)
             if not current_state:
-                _LOGGER.error("API22: Device not found in response. Device ID: %s, Response: %s", device_id, device_data)
+                _LOGGER.error("API22: Device not found in states. Device ID: %s, Available states: %s", 
+                             device_id, list(device_data["states"].keys()))
                 raise Exception("Device not found")
+            
+            _LOGGER.debug("API22: Found device state: %s", current_state)
 
-        # Determine current mode (EXACT from webapp)
-        current_mode = current_state.get("mode", 2)
+        # Determine current mode (EXACT from webapp line 275)
+        current_mode = current_state.get("state", {}).get("mode", 2)
+        
+        # If mode is being changed, use the new mode (EXACT from webapp lines 278-285)
         if "mode" in payload:
             if isinstance(payload["mode"], dict) and "value" in payload["mode"]:
                 current_mode = int(payload["mode"]["value"])
