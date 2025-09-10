@@ -59,10 +59,10 @@ class BluestarAPI:
             self._session = aiohttp.ClientSession()
 
         try:
-            # Prepare login payload (EXACT WEBAPP FORMAT)
+            # Prepare login payload
             login_payload = {
                 "auth_id": self.phone,
-                "auth_type": "phone",  # EXACT webapp format
+                "auth_type": 1,  # Phone number
                 "password": self.password,
             }
 
