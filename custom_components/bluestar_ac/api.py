@@ -271,6 +271,7 @@ class BluestarAPI:
 
     async def _send_http_command(self, device_id: str, payload: Dict[str, Any]) -> None:
         """Send HTTP command using EXACT WEBAPP METHOD."""
+        _LOGGER.debug("API22: _send_http_command called with device_id: %s", device_id)
         headers = DEFAULT_HEADERS.copy()
         headers["X-APP-SESSION"] = self.session_token
 
@@ -361,6 +362,7 @@ class BluestarAPI:
         }
 
         _LOGGER.debug("API22: Sending EXACT WEBAPP structure: %s", preferences_payload)
+        _LOGGER.debug("API22: Final device_id for preferences: %s", device_id)
         _LOGGER.debug("API22: URL: %s", f"{self.base_url}/things/{device_id}/preferences")
         _LOGGER.debug("API22: Headers: %s", headers)
 
