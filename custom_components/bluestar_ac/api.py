@@ -296,8 +296,10 @@ class BluestarAPI:
                 if isinstance(things_list, list):
                     for device in things_list:
                         if device.get("thing_id") == device_id:
-                            current_state = device.get("state", {})
+                            # The device object contains the state directly, not nested under 'state'
+                            current_state = device
                             _LOGGER.debug("API22: Found device with thing_id: %s", device_id)
+                            _LOGGER.debug("API22: Device object: %s", device)
                             break
                 else:
                     _LOGGER.error("API22: 'things' is not a list: %s", type(things_list))
